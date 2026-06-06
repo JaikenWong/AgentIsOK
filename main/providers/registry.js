@@ -3,11 +3,13 @@ const defaultsConfig = require('../../config/defaults.json');
 const OpenAIProvider = require('./openai');
 const AnthropicProvider = require('./anthropic');
 const LocalCodexProvider = require('./local-codex');
+const LocalClaudeProvider = require('./local-claude');
 
 const PROVIDER_MAP = {
   openai: OpenAIProvider,
   anthropic: AnthropicProvider,
-  codex: LocalCodexProvider
+  codex: LocalCodexProvider,
+  claude: LocalClaudeProvider
 };
 
 class ProviderRegistry {

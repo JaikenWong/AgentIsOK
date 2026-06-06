@@ -17,10 +17,38 @@ class BaseProvider {
       accountId: this.account.id,
       provider: this.account.provider,
       label: this.account.label,
+      billingMode: this.account.billingMode || null,
       capturedAt: Date.now(),
       source: 'provider_api',
       status: 'ok',
       ...fields
+    };
+  }
+
+  endOfMonthUtc() {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0));
+  }
+
+  buildProgressLine({ label, used, limit, resetsAt = null, subtitle = null }) {
+    return {
+      type: 'progress',
+      label,
+      used: Number(used || 0),
+      limit: Number(limit || 0),
+      remaining: Number(limit || 0) - Number(used || 0),
+      format: { kind: 'currency', currency: 'USD' },
+      resetsAt,
+      subtitle
+    };
+  }
+
+  buildTextLine({ label, value, subtitle = null }) {
+    return {
+      type: 'text',
+      label,
+      value,
+      subtitle
     };
   }
 

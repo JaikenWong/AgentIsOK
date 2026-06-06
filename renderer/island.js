@@ -4,9 +4,6 @@ const island = document.getElementById('island');
 const expandedContent = document.getElementById('expandedContent');
 const primaryLabel = document.getElementById('primaryLabel');
 const primaryValue = document.getElementById('primaryValue');
-const todayValue = document.getElementById('todayValue');
-const monthValue = document.getElementById('monthValue');
-const runwayValue = document.getElementById('runwayValue');
 const sessionsList = document.getElementById('sessionsList');
 const accountsList = document.getElementById('accountsList');
 const syncButton = document.getElementById('syncButton');
@@ -62,6 +59,22 @@ function formatUsd(value) {
     return `$${value.toFixed(1)}`;
 }
 
+function getAccountPriority(account) {
+    if (account && account.id === 'codex-local') {
+        return 0;
+    }
+
+    if (account && account.id === 'claude-local') {
+        return 1;
+    }
+
+    if (account && account.status === 'stale') {
+        return 2;
+    }
+
+    return 3;
+}
+
 function getTone(data) {
     if (pendingIntervention) {
         return 'tone-danger';
@@ -71,11 +84,11 @@ function getTone(data) {
         return 'tone-neutral';
     }
 
-    if (data.overview.totalBalanceUsd <= 20 || data.overview.runwayDays <= 3) {
+    if (Number.isFinite(data.overview.totalBalanceUsd) && (data.overview.totalBalanceUsd <= 20 || data.overview.runwayDays <= 3)) {
         return 'tone-danger';
     }
 
-    if (data.overview.totalBalanceUsd <= 50 || data.overview.runwayDays <= 7) {
+    if (Number.isFinite(data.overview.totalBalanceUsd) && (data.overview.totalBalanceUsd <= 50 || data.overview.runwayDays <= 7)) {
         return 'tone-warn';
     }
 
@@ -88,42 +101,123 @@ function renderAccounts(accounts) {
         return;
     }
 
-    accountsList.innerHTML = accounts
-        .slice(0, 2)
-        .map((account) => `
-            <div class="accountRow">
-                <span class="accountName">${account.label}</span>
-                <span class="accountValue">${formatAccountValue(account)}</span>
-            </div>
-        `)
+    const prioritizedAccounts = [...accounts].sort((left, right) => getAccountPriority(left) - getAccountPriority(right));
+
+    accountsList.innerHTML = prioritizedAccounts
+        .slice(0, 3)
+        .map((account) => renderAccountCard(account))
         .join('');
-}
-
-function formatAccountValue(account) {
-    if (typeof account.balanceUsd === 'number' && !Number.isNaN(account.balanceUsd)) {
-        return formatUsd(account.balanceUsd);
-    }
-
-    if (account.provider === 'codex' && account.meta && account.meta.planType) {
-        return `${account.meta.planType} plan`;
-    }
-
-    return '--';
 }
 
 function renderSummary(data) {
     currentData = data;
-    primaryLabel.innerText = 'Balance';
-    primaryValue.innerText = formatUsd(data.overview.totalBalanceUsd);
-    todayValue.innerText = formatUsd(data.overview.todayCostUsd);
-    monthValue.innerText = formatUsd(data.overview.monthCostUsd);
-    runwayValue.innerText = data.overview.runwayDaysLabel;
+    const codexAccount = data.accounts.find(a => a.id === 'codex-local');
+    if (codexAccount) {
+        primaryLabel.innerText = 'Codex Plan';
+        primaryValue.innerText = codexAccount.plan || 'Live';
+    } else {
+        primaryLabel.innerText = 'Codex Status';
+        primaryValue.innerText = 'Live';
+    }
     renderSessions(data.sessions || []);
     renderAccounts(data.accounts || []);
     updateCompactVisibility();
 
     island.classList.remove('tone-neutral', 'tone-good', 'tone-warn', 'tone-danger');
     island.classList.add(getTone(data));
+}
+
+function renderAccountCard(account) {
+    const plan = account.plan ? `<span class="accountPlan">${escapeHtml(account.plan)}</span>` : '';
+    const lines = Array.isArray(account.lines) ? account.lines.slice(0, 2).map((line) => renderAccountLine(line)).join('') : '';
+    const statusClass = account.status ? ` account-${escapeHtml(account.status)}` : '';
+
+    return `
+        <div class="accountCard${statusClass}">
+            <div class="accountHead">
+                <span class="accountName">${escapeHtml(account.label || account.provider || 'Account')}</span>
+                <span class="accountValue">${renderAccountHeadline(account)}</span>
+            </div>
+            ${plan}
+            <div class="accountLines">${lines}</div>
+        </div>
+    `;
+}
+
+function renderAccountHeadline(account) {
+    if (account.status === 'stale') {
+        return 'Stale';
+    }
+
+    if (typeof account.balanceUsd === 'number' && !Number.isNaN(account.balanceUsd)) {
+        return formatUsd(account.balanceUsd);
+    }
+
+    if (account.provider === 'codex' && account.meta && account.meta.planType) {
+        return account.plan || 'ChatGPT login';
+    }
+
+    if (account.provider === 'claude' && account.plan) {
+        return account.plan;
+    }
+
+    return '--';
+}
+
+function renderAccountLine(line) {
+    if (!line) {
+        return '';
+    }
+
+    if (line.type === 'progress') {
+        return renderProgressLine(line);
+    }
+
+    return `
+        <div class="accountLine accountTextLine">
+            <span class="lineLabel">${escapeHtml(line.label || '')}</span>
+            <span class="lineValue">${escapeHtml(line.value || '--')}</span>
+        </div>
+        ${line.subtitle ? `<div class="lineSub">${escapeHtml(line.subtitle)}</div>` : ''}
+    `;
+}
+
+function renderProgressLine(line) {
+    const limit = Number(line.limit || 0);
+    const used = Number(line.used || 0);
+    const percent = limit > 0 ? Math.max(0, Math.min(100, (used / limit) * 100)) : 0;
+    const resetText = line.resetsAt ? ` · reset ${formatResetDate(line.resetsAt)}` : '';
+    
+    let valueLabel = '';
+    const format = line.format || { kind: 'currency', currency: 'USD' };
+    
+    if (format.kind === 'percent') {
+        valueLabel = `${Math.round(used)}%`;
+    } else if (format.kind === 'count') {
+        valueLabel = `${used}${format.suffix ? ` ${format.suffix}` : ''}`;
+    } else {
+        valueLabel = formatUsd(used);
+    }
+
+    let limitLabel = '';
+    if (format.kind === 'percent') {
+        limitLabel = '100%';
+    } else if (format.kind === 'count') {
+        limitLabel = `${limit}${format.suffix ? ` ${format.suffix}` : ''}`;
+    } else {
+        limitLabel = formatUsd(limit);
+    }
+
+    const subtitle = `${line.subtitle || `${valueLabel} / ${limitLabel}`}${resetText}`;
+
+    return `
+        <div class="accountLine accountProgressLine">
+            <span class="lineLabel">${escapeHtml(line.label || 'Usage')}</span>
+            <span class="lineValue">${format.kind === 'percent' ? valueLabel : `${Math.round(percent)}%`}</span>
+        </div>
+        <div class="progressTrack"><div class="progressFill" style="width:${percent}%"></div></div>
+        <div class="lineSub">${escapeHtml(subtitle)}</div>
+    `;
 }
 
 function renderSessions(sessions) {
@@ -237,6 +331,24 @@ function compactText(value, maxLength) {
         return '--';
     }
     return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatResetDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return '--';
+    }
+
+    return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function updateCompactVisibility() {

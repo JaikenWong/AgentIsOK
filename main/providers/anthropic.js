@@ -11,22 +11,42 @@ class AnthropicProvider extends BaseProvider {
         .filter((item) => item.date === todayKey)
         .reduce((sum, item) => sum + item.costUsd, 0);
       const budgetUsd = this.getConfiguredNumber('budgetUsd', null);
+      const balanceUsd = Number.isFinite(budgetUsd) ? Math.max(0, budgetUsd - monthCostUsd) : null;
 
       return this.buildBalanceSnapshot({
-        balanceUsd: Number.isFinite(budgetUsd) ? Math.max(0, budgetUsd - monthCostUsd) : null,
+        balanceUsd,
         creditTotalUsd: budgetUsd,
         creditUsedUsd: monthCostUsd,
         todayCostUsd,
         monthCostUsd,
+        plan: Number.isFinite(budgetUsd) ? `Budget $${budgetUsd}` : 'Usage',
+        lines: this.buildUsageLines({
+          monthCostUsd,
+          todayCostUsd,
+          budgetUsd,
+          balanceUsd
+        }),
         status: 'live',
         message: 'Anthropic admin cost report'
       });
     }
 
+    const balanceUsd = this.getMockField('balanceUsd', 18.2);
+    const creditTotalUsd = this.getMockField('creditTotalUsd', 50);
+    const creditUsedUsd = this.getMockField('creditUsedUsd', 31.8);
     return this.buildBalanceSnapshot({
-      balanceUsd: this.getMockField('balanceUsd', 18.2),
-      creditTotalUsd: this.getMockField('creditTotalUsd', 50),
-      creditUsedUsd: this.getMockField('creditUsedUsd', 31.8),
+      balanceUsd,
+      creditTotalUsd,
+      creditUsedUsd,
+      todayCostUsd: this.getMockField('todayCostUsd', 0.9),
+      monthCostUsd: creditUsedUsd,
+      plan: `Budget $${creditTotalUsd}`,
+      lines: this.buildUsageLines({
+        monthCostUsd: creditUsedUsd,
+        todayCostUsd: this.getMockField('todayCostUsd', 0.9),
+        budgetUsd: creditTotalUsd,
+        balanceUsd
+      }),
       status: 'mock',
       message: 'Set adminKeyEnv for live data'
     });
@@ -93,6 +113,33 @@ class AnthropicProvider extends BaseProvider {
       const date = this.toIso(this.dateDaysAgoUtc(6 - index)).slice(0, 10);
       return this.buildDailyCostEvent({ date, costUsd });
     });
+  }
+
+  buildUsageLines({ monthCostUsd, todayCostUsd, budgetUsd, balanceUsd }) {
+    const lines = [];
+    if (Number.isFinite(budgetUsd) && budgetUsd > 0) {
+      lines.push(this.buildProgressLine({
+        label: 'Month',
+        used: monthCostUsd,
+        limit: budgetUsd,
+        resetsAt: this.endOfMonthUtc().toISOString(),
+        subtitle: `${this.formatUsd(balanceUsd)} left`
+      }));
+    }
+
+    lines.push(this.buildTextLine({
+      label: 'Today',
+      value: `${this.formatUsd(todayCostUsd)} today`,
+      subtitle: `Month ${this.formatUsd(monthCostUsd)}`
+    }));
+
+    return lines;
+  }
+
+  formatUsd(value) {
+    return typeof value === 'number' && Number.isFinite(value)
+      ? `$${value.toFixed(1)}`
+      : '--';
   }
 }
 

@@ -71,7 +71,14 @@ class UsageStore {
   }
 
   getLatestBalances() {
-    return [...this.balanceSnapshots].sort((a, b) => b.capturedAt - a.capturedAt);
+    return [...this.balanceSnapshots].sort((a, b) => {
+      const statusDiff = this.getStatusRank(b.status) - this.getStatusRank(a.status);
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+
+      return (b.capturedAt || 0) - (a.capturedAt || 0);
+    });
   }
 
   getRecentUsageEvents(limit = 20) {
@@ -123,7 +130,24 @@ class UsageStore {
   getOverview() {
     const costEvents = this.getCanonicalCostEvents();
     const balances = this.getLatestBalances();
-    const totalBalanceUsd = balances.reduce((sum, item) => sum + (Number(item.balanceUsd) || 0), 0);
+    const balanceValues = balances
+      .map((item) => Number(item.balanceUsd))
+      .filter((value) => Number.isFinite(value));
+    const budgetValues = balances
+      .map((item) => Number(item.creditTotalUsd))
+      .filter((value) => Number.isFinite(value));
+    const usedValues = balances
+      .map((item) => Number(item.creditUsedUsd))
+      .filter((value) => Number.isFinite(value));
+    const totalBalanceUsd = balanceValues.length
+      ? balanceValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const trackedBudgetUsd = budgetValues.length
+      ? budgetValues.reduce((sum, value) => sum + value, 0)
+      : null;
+    const trackedUsedUsd = usedValues.length
+      ? usedValues.reduce((sum, value) => sum + value, 0)
+      : null;
 
     const now = new Date();
     const todayStart = new Date(now);
@@ -140,13 +164,19 @@ class UsageStore {
       .reduce((sum, item) => sum + Number(item.costUsd || 0), 0);
 
     const runwayDays = ForecastService.calculateRunwayDays(totalBalanceUsd, this.getDailySeries(7));
+    const quotaPercent = Number.isFinite(trackedBudgetUsd) && trackedBudgetUsd > 0 && Number.isFinite(trackedUsedUsd)
+      ? Math.max(0, Math.min(100, (trackedUsedUsd / trackedBudgetUsd) * 100))
+      : null;
 
     return {
       totalBalanceUsd,
+      trackedBudgetUsd,
+      trackedUsedUsd,
+      quotaPercent,
       todayCostUsd,
       monthCostUsd,
       runwayDays,
-      runwayDaysLabel: runwayDays ? `${Math.floor(runwayDays)} days` : '--'
+      runwayDaysLabel: Number.isFinite(runwayDays) ? `${Math.floor(runwayDays)} days` : '--'
     };
   }
 
@@ -157,6 +187,19 @@ class UsageStore {
       dailySeries: this.getDailySeries(7),
       recentEvents: this.getRecentUsageEvents(20)
     };
+  }
+
+  getStatusRank(status) {
+    if (status === 'live' || status === 'live-local') {
+      return 3;
+    }
+    if (status === 'ok') {
+      return 2;
+    }
+    if (status === 'mock') {
+      return 1;
+    }
+    return 0;
   }
 }
 

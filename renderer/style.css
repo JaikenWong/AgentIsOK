@@ -97,6 +97,45 @@ body, html {
     border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.accountCard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 9px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.account-stale {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    opacity: 0.78;
+}
+
+.account-stale .accountValue {
+    color: rgba(255, 205, 110, 0.95);
+}
+
+.accountHead,
+.accountLine {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.accountPlan,
+.lineSub {
+    font-size: 10px;
+    opacity: 0.62;
+}
+
+.accountLines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .sessions {
     display: flex;
     flex-direction: column;
@@ -279,4 +318,28 @@ body, html {
 
 .compactHidden {
     display: none !important;
+}
+
+.lineLabel {
+    font-size: 11px;
+    opacity: 0.76;
+}
+
+.lineValue {
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.progressTrack {
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(88, 214, 141, 0.95), rgba(78, 176, 255, 0.95));
 }

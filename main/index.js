@@ -22,7 +22,7 @@ let interventionManager;
 
 const WINDOW_SIZES = {
   pill: { width: 248, height: 56 },
-  expanded: { width: 356, height: 296 }
+  expanded: { width: 356, height: 404 }
 };
 
 function getTopCenterBounds(size) {
@@ -63,6 +63,7 @@ function createIslandWindow() {
   islandWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   islandWindow.setAlwaysOnTop(true, 'screen-saver');
   islandWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  // islandWindow.webContents.openDevTools({ mode: 'detach' });
   islandWindow.once('ready-to-show', () => islandWindow.showInactive());
 }
 

@@ -8,6 +8,10 @@
       "name": "Anthropic",
       "currency": "USD"
     },
+    "claude": {
+      "name": "Claude Code",
+      "currency": "USD"
+    },
     "codex": {
       "name": "Codex",
       "currency": "USD"
@@ -42,6 +46,12 @@
         "creditTotalUsd": 50,
         "creditUsedUsd": 31.8
       }
+    },
+    {
+      "id": "claude-local",
+      "provider": "claude",
+      "label": "Claude Local",
+      "billingMode": "subscription"
     },
     {
       "id": "codex-local",

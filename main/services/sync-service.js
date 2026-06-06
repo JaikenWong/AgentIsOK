@@ -18,8 +18,10 @@ class SyncService {
       }
 
       try {
+        console.log(`Syncing account: ${account.id} (${account.provider})`);
         const balance = await adapter.fetchBalance();
         if (balance) {
+          console.log(`Successfully fetched balance for ${account.id}: ${balance.plan || balance.status}`);
           this.usageStore.saveBalanceSnapshot(balance);
         }
 
@@ -28,6 +30,7 @@ class SyncService {
           this.usageStore.replaceProviderDailyCosts(account.id, usageEvents);
         }
       } catch (error) {
+        console.error(`Failed to sync account ${account.id}:`, error);
         this.usageStore.saveBalanceSnapshot({
           accountId: account.id,
           provider: account.provider,
