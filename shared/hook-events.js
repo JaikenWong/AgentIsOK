@@ -25,12 +25,19 @@ function isPermissionLikeEvent(eventData) {
   return raw.includes('permission') || raw.includes('approval');
 }
 
+function isPreToolUseEvent(eventData) {
+  return String(eventData.event).toLowerCase() === 'pretooluse';
+}
+
 function formatSourceLabel(source) {
   if (source === 'claude') {
     return 'Claude Code';
   }
   if (source === 'codex') {
     return 'Codex';
+  }
+  if (source === 'opencode') {
+    return 'OpenCode';
   }
   return 'Agent';
 }
@@ -73,23 +80,41 @@ function extractPrefixRule(eventData) {
   return rule ? String(rule) : null;
 }
 
+function extractFilePath(eventData) {
+  const payload = eventData.payload || {};
+  return payload.file_path || payload.filePath || payload.path || null;
+}
+
 function buildInterventionModel(eventData) {
   const payload = eventData.payload || {};
   const command = extractCommand(eventData);
+  const filePath = extractFilePath(eventData);
   const fallback = [payload.matcher, payload.reason, payload.message, payload.prompt].filter(Boolean)[0];
+
+  const toolName = extractToolName(eventData);
+  const title = filePath
+    ? `${formatSourceLabel(eventData.source)} wants to edit ${basename(filePath)}`
+    : `${formatSourceLabel(eventData.source)} needs approval`;
 
   return {
     source: eventData.source,
     event: eventData.event,
-    title: `${formatSourceLabel(eventData.source)} needs approval`,
+    title,
     detail: String(command || fallback || eventData.raw || '--').slice(0, 240),
     command,
-    toolName: extractToolName(eventData),
+    filePath,
+    toolName,
     sandbox: extractSandbox(eventData),
     prefixRule: extractPrefixRule(eventData),
     raw: eventData.raw,
     meta: payload
   };
+}
+
+function basename(filePath) {
+  if (!filePath) return '';
+  const parts = String(filePath).replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || filePath;
 }
 
 function buildHookDecisionResponse({ approved, allowPersistent, requiresDecision }) {
@@ -104,6 +129,7 @@ function buildHookDecisionResponse({ approved, allowPersistent, requiresDecision
 module.exports = {
   normalizeHookEnvelope,
   isPermissionLikeEvent,
+  isPreToolUseEvent,
   buildInterventionModel,
   buildHookDecisionResponse
 };

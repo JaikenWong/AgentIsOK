@@ -1,12 +1,24 @@
+const { Notification } = require('electron');
+
 class InterventionManager {
     constructor() {
         this.pending = null;
         this.queue = [];
         this.onChange = null;
+        this.notificationEnabled = true;
+        this.soundEnabled = true;
     }
 
     setOnChange(handler) {
         this.onChange = handler;
+    }
+
+    setNotificationEnabled(enabled) {
+        this.notificationEnabled = enabled;
+    }
+
+    setSoundEnabled(enabled) {
+        this.soundEnabled = enabled;
     }
 
     request(request) {
@@ -17,13 +29,18 @@ class InterventionManager {
                 event: request.event || 'PermissionRequest',
                 title: request.title || 'Approval required',
                 detail: request.detail || '',
+                command: request.command || '',
+                filePath: request.filePath || '',
+                toolName: request.toolName || 'permission',
                 raw: request.raw || '',
                 meta: request.meta || {},
+                createdAt: Date.now(),
                 resolve
             };
 
             if (this.pending) {
                 this.queue.push(entry);
+                this.sendNotification(entry);
                 return;
             }
 
@@ -33,7 +50,45 @@ class InterventionManager {
 
     activate(entry) {
         this.pending = entry;
+        this.sendNotification(entry);
         this.emitChange();
+    }
+
+    sendNotification(entry) {
+        if (!this.notificationEnabled) {
+            return;
+        }
+
+        try {
+            const notification = new Notification({
+                title: entry.title || 'Approval required',
+                body: this.formatNotificationBody(entry),
+                silent: !this.soundEnabled,
+                timeoutType: 'never'
+            });
+
+            notification.on('click', () => {
+                this.emitChange();
+            });
+
+            notification.show();
+        } catch (err) {
+            console.error('Failed to show notification:', err);
+        }
+    }
+
+    formatNotificationBody(entry) {
+        const parts = [];
+        if (entry.toolName && entry.toolName !== 'permission') {
+            parts.push(`Tool: ${entry.toolName}`);
+        }
+        if (entry.command) {
+            const cmd = String(entry.command).slice(0, 80);
+            parts.push(cmd);
+        } else if (entry.detail) {
+            parts.push(String(entry.detail).slice(0, 80));
+        }
+        return parts.join('\n') || 'Click to review';
     }
 
     getPending() {

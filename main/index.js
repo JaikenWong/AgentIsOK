@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, screen, globalShortcut } = require('electron');
 const path = require('path');
 
 const Watcher = require('./watcher');
@@ -9,6 +9,7 @@ const ConfigInjector = require('./config-injector');
 const createTray = require('./tray');
 const SyncService = require('./services/sync-service');
 const InterventionManager = require('./intervention-manager');
+const { LocalAPI } = require('./local-api');
 
 let islandWindow;
 let trayController;
@@ -19,6 +20,7 @@ let syncService;
 let ipcServer;
 let syncTimer;
 let interventionManager;
+let localAPI;
 
 const WINDOW_SIZES = {
   pill: { width: 248, height: 56 },
@@ -46,7 +48,7 @@ function createIslandWindow() {
     transparent: true,
     hasShadow: false,
     resizable: false,
-    movable: false,
+    movable: true,
     fullscreenable: false,
     minimizable: false,
     maximizable: false,
@@ -123,6 +125,46 @@ function setupIPC() {
       interventionManager.respond(decision);
     }
   });
+
+  ipcMain.handle('hooks:get-status', () => {
+    return {
+      claude: ConfigInjector.getClaudeStatus(),
+      codex: ConfigInjector.getCodexStatus()
+    };
+  });
+
+  ipcMain.handle('hooks:install', (_event, target) => {
+    if (target === 'claude') {
+      ConfigInjector.injectClaude();
+    } else if (target === 'codex') {
+      ConfigInjector.injectCodex();
+    }
+    return {
+      claude: ConfigInjector.getClaudeStatus(),
+      codex: ConfigInjector.getCodexStatus()
+    };
+  });
+
+  ipcMain.handle('hooks:uninstall', (_event, target) => {
+    if (target === 'claude') {
+      ConfigInjector.uninjectClaude();
+    } else if (target === 'codex') {
+      ConfigInjector.uninjectCodex();
+    }
+    return {
+      claude: ConfigInjector.getClaudeStatus(),
+      codex: ConfigInjector.getCodexStatus()
+    };
+  });
+
+  ipcMain.handle('providers:get-visibility', () => {
+    return syncService.registry.getProviderVisibility();
+  });
+
+  ipcMain.on('providers:set-visibility', (_event, provider, visible) => {
+    syncService.registry.setProviderVisibility(provider, visible);
+    syncNow();
+  });
 }
 
 function setupBridgeServer() {
@@ -182,6 +224,11 @@ async function createApp() {
   ConfigInjector.injectClaude();
   ConfigInjector.injectCodex();
 
+  localAPI = new LocalAPI(usageStore, interventionManager);
+  localAPI.start();
+
+  registerGlobalShortcuts();
+
   await syncNow();
 
   const intervalMinutes = syncService.defaultsConfig.syncIntervalMinutes || 10;
@@ -199,9 +246,39 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {});
 
+function registerGlobalShortcuts() {
+  globalShortcut.register('CommandOrControl+Shift+Space', () => {
+    if (islandWindow && !islandWindow.isDestroyed()) {
+      if (islandWindow.isVisible()) {
+        setIslandMode('pill');
+      } else {
+        islandWindow.showInactive();
+        setIslandMode('expanded');
+        broadcastSummary();
+      }
+    }
+  });
+
+  globalShortcut.register('CommandOrControl+Shift+A', () => {
+    if (interventionManager && interventionManager.getPending()) {
+      interventionManager.respond('approve');
+    }
+  });
+
+  globalShortcut.register('CommandOrControl+Shift+D', () => {
+    if (interventionManager && interventionManager.getPending()) {
+      interventionManager.respond('deny');
+    }
+  });
+}
+
 app.on('before-quit', () => {
   app.isQuiting = true;
+  globalShortcut.unregisterAll();
   if (syncTimer) {
     clearInterval(syncTimer);
+  }
+  if (localAPI) {
+    localAPI.stop();
   }
 });

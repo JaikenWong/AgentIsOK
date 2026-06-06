@@ -64,16 +64,27 @@ function wireClient(client) {
         process.exit(0);
     });
 
-    const timeoutMs = eventName.toLowerCase() === 'permissionrequest' ? 86400000 : 5000;
+    const isBlocking = eventName.toLowerCase() === 'permissionrequest'
+        || eventName.toLowerCase() === 'pretooluse';
+    const timeoutMs = isBlocking ? 86400000 : 5000;
     setTimeout(() => process.exit(0), timeoutMs);
 }
 
 function handleResponse(response) {
-    if (eventName.toLowerCase() !== 'permissionrequest') {
-        process.exit(0);
+    if (eventName.toLowerCase() === 'permissionrequest') {
+        handlePermissionResponse(response);
         return;
     }
 
+    if (eventName.toLowerCase() === 'pretooluse') {
+        handlePreToolUseResponse(response);
+        return;
+    }
+
+    process.exit(0);
+}
+
+function handlePermissionResponse(response) {
     if (response && response.requiresDecision) {
         const output = source === 'claude'
             ? buildClaudePermissionOutput(response)
@@ -92,6 +103,24 @@ function handleResponse(response) {
         ? (response && response.approved ? 0 : 2)
         : 0;
     process.exit(exitCode);
+}
+
+function handlePreToolUseResponse(response) {
+    if (response && response.requiresDecision) {
+        const output = source === 'claude'
+            ? buildClaudePreToolUseOutput(response)
+            : buildCodexPreToolUseOutput(response);
+        const exitCode = source === 'codex'
+            ? (response && response.approved ? 0 : 2)
+            : 0;
+
+        process.stdout.write(`${JSON.stringify(output)}\n`, () => {
+            process.exit(exitCode);
+        });
+        return;
+    }
+
+    process.exit(0);
 }
 
 function buildCodexPermissionOutput(response) {
@@ -130,6 +159,29 @@ function buildClaudePermissionOutput(response) {
             hookEventName: 'PermissionRequest',
             decision
         }
+    };
+}
+
+function buildClaudePreToolUseOutput(response) {
+    const decision = {
+        behavior: response.approved ? 'allow' : 'deny'
+    };
+
+    if (!response.approved) {
+        decision.message = 'Denied from ThatIsOk';
+    }
+
+    return {
+        hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            decision
+        }
+    };
+}
+
+function buildCodexPreToolUseOutput(response) {
+    return {
+        behavior: response.approved ? 'allow' : 'deny'
     };
 }
 

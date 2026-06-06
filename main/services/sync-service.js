@@ -9,7 +9,7 @@ class SyncService {
   }
 
   async syncAllAccounts() {
-    const accounts = this.registry.getAccounts();
+    const accounts = this.registry.getVisibleAccounts();
 
     for (const account of accounts) {
       const adapter = this.registry.createAdapter(account);

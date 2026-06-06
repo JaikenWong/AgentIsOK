@@ -17,9 +17,11 @@ const interventionMeta = document.getElementById('interventionMeta');
 const approveButton = document.getElementById('approveButton');
 const approveAlwaysButton = document.getElementById('approveAlwaysButton');
 const denyButton = document.getElementById('denyButton');
+const providerToggles = document.getElementById('providerToggles');
 
 let currentData = null;
 let pendingIntervention = null;
+let providerVisibility = {};
 
 function expandIsland() {
     island.classList.remove('pill');
@@ -93,20 +95,6 @@ function getTone(data) {
     }
 
     return 'tone-good';
-}
-
-function renderAccounts(accounts) {
-    if (!accounts.length) {
-        accountsList.innerHTML = '';
-        return;
-    }
-
-    const prioritizedAccounts = [...accounts].sort((left, right) => getAccountPriority(left) - getAccountPriority(right));
-
-    accountsList.innerHTML = prioritizedAccounts
-        .slice(0, 3)
-        .map((account) => renderAccountCard(account))
-        .join('');
 }
 
 function renderSummary(data) {
@@ -253,7 +241,7 @@ function renderIntervention(intervention) {
     interventionSource.innerText = formatSource(intervention.source);
     interventionTool.innerText = formatTool(intervention.toolName);
     interventionTitle.innerText = intervention.title || 'Approval required';
-    renderInterventionCommand(intervention.command);
+    renderInterventionCommand(intervention.command || intervention.filePath);
     interventionDetail.innerText = renderDetailText(intervention);
     renderInterventionMeta(intervention);
     updateCompactVisibility();
@@ -408,9 +396,74 @@ denyButton.addEventListener('click', () => {
     ipcRenderer.send('intervention:respond', 'deny');
 });
 
+function renderProviderToggles() {
+    const providers = Object.entries(providerVisibility);
+    if (!providers.length) {
+        providerToggles.innerHTML = '';
+        return;
+    }
+
+    providerToggles.innerHTML = providers.map(([key, info]) => {
+        const activeClass = info.visible ? ' active' : '';
+        return `
+            <div class="providerToggle" data-provider="${escapeHtml(key)}">
+                <span class="providerToggleLabel">${escapeHtml(info.label)}</span>
+                <div class="toggleSwitch${activeClass}"></div>
+            </div>
+        `;
+    }).join('');
+
+    providerToggles.querySelectorAll('.providerToggle').forEach((el) => {
+        el.addEventListener('click', () => {
+            const provider = el.dataset.provider;
+            const current = providerVisibility[provider];
+            if (current) {
+                const newVisible = !current.visible;
+                providerVisibility[provider].visible = newVisible;
+                ipcRenderer.send('providers:set-visibility', provider, newVisible);
+                renderProviderToggles();
+                renderAccounts(currentData?.accounts || []);
+            }
+        });
+    });
+}
+
+function renderAccounts(accounts) {
+    if (!accounts.length) {
+        accountsList.innerHTML = '';
+        return;
+    }
+
+    const visibleProviders = Object.entries(providerVisibility)
+        .filter(([, info]) => info.visible)
+        .map(([key]) => key);
+
+    const visibleAccounts = accounts.filter(
+        (account) => visibleProviders.includes(account.provider)
+    );
+
+    if (!visibleAccounts.length) {
+        accountsList.innerHTML = '<div style="font-size:10px;opacity:0.4;text-align:center;padding:4px;">All providers hidden</div>';
+        return;
+    }
+
+    const prioritizedAccounts = [...visibleAccounts].sort((left, right) => getAccountPriority(left) - getAccountPriority(right));
+
+    accountsList.innerHTML = prioritizedAccounts
+        .slice(0, 3)
+        .map((account) => renderAccountCard(account))
+        .join('');
+}
+
+async function loadProviderVisibility() {
+    providerVisibility = await ipcRenderer.invoke('providers:get-visibility');
+    renderProviderToggles();
+}
+
 Promise.all([
     ipcRenderer.invoke('island:get-data'),
-    ipcRenderer.invoke('island:get-intervention')
+    ipcRenderer.invoke('island:get-intervention'),
+    loadProviderVisibility()
 ]).then(([data, intervention]) => {
     renderSummary(data);
     renderIntervention(intervention);

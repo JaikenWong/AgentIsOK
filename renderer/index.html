@@ -8,17 +8,33 @@
     <div id="container">
         <div id="island" class="pill">
             <div id="pillContent">
-                <span id="primaryLabel">Codex Status</span>
+                <span id="primaryLabel">ThatIsOk</span>
                 <span id="primaryValue">Live</span>
             </div>
             <div id="expandedContent" class="hidden">
                 <div id="interventionPanel" class="intervention hidden">
-...
+                    <div class="interventionHeader">
+                        <span id="interventionSource" class="sourceBadge">Claude</span>
+                        <span id="interventionTool" class="toolBadge">permission</span>
+                    </div>
+                    <div id="interventionTitle" class="interventionTitle">Approval required</div>
+                    <div id="interventionDetail" class="interventionDetail"></div>
+                    <pre id="interventionCommand" class="interventionCommand hidden"></pre>
+                    <div id="interventionMeta" class="interventionMeta hidden"></div>
+                    <div class="interventionHint">
+                        <span class="hintKey">&#8984;Shift A</span> Approve
+                        <span class="hintSep">|</span>
+                        <span class="hintKey">&#8984;Shift D</span> Deny
+                    </div>
                     <div class="interventionActions">
                         <button id="approveButton" class="btn approve">Approve</button>
                         <button id="approveAlwaysButton" class="btn approveAlways">Always</button>
                         <button id="denyButton" class="btn deny">Deny</button>
                     </div>
+                </div>
+                <div id="providersPanel" class="providersPanel">
+                    <div class="providersHeader">Providers</div>
+                    <div id="providerToggles" class="providerToggles"></div>
                 </div>
                 <div id="sessionsList" class="sessions hidden"></div>
                 <div id="accountsList" class="accounts"></div>

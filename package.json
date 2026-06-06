@@ -1,7 +1,7 @@
 {
   "name": "thatisok",
   "version": "1.0.0",
-  "description": "",
+  "description": "AI agent cost + approval cockpit for Claude Code, Codex, Cursor, MiniMax",
   "main": "main/index.js",
   "bin": {
     "ok": "bin/cli.js"
@@ -12,7 +12,10 @@
     "build:win": "electron-builder build --win",
     "build:mac": "electron-builder build --mac",
     "test:hook": "node bin/test-permission-hook.js codex",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "plugin:install": "node bin/install-opencode-plugin.js install",
+    "plugin:uninstall": "node bin/install-opencode-plugin.js uninstall",
+    "plugin:status": "node bin/install-opencode-plugin.js status"
   },
   "build": {
     "appId": "com.thatisok.app",
@@ -22,7 +25,10 @@
     },
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": ["arm64"]
+        }
       ],
       "icon": "assets/icon.ico"
     },
@@ -38,6 +44,7 @@
       "bridge/**/*",
       "config/**/*",
       "assets/**/*",
+      "plugins/**/*",
       "package.json"
     ]
   },

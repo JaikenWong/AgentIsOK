@@ -3,5 +3,23 @@
   "alerts": {
     "lowBalanceUsd": 20,
     "lowRunwayDays": 3
+  },
+  "providers": {
+    "codex": {
+      "visible": true,
+      "label": "Codex"
+    },
+    "claude": {
+      "visible": false,
+      "label": "Claude Code"
+    },
+    "cursor": {
+      "visible": false,
+      "label": "Cursor"
+    },
+    "minimax": {
+      "visible": false,
+      "label": "MiniMax"
+    }
   }
 }
