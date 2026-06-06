@@ -1,0 +1,282 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#container {
+    display: flex;
+    justify-content: center;
+    padding-top: 0;
+    width: 100%;
+}
+
+#island {
+    width: 100%;
+    color: white;
+    border-radius: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px;
+    transition: all 0.18s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+}
+
+#island.pill {
+    min-height: 56px;
+}
+
+#island.expanded {
+    border-radius: 20px;
+    padding-bottom: 12px;
+}
+
+#pillContent {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    font-size: 12px;
+}
+
+#primaryLabel {
+    font-weight: 600;
+    opacity: 0.72;
+    letter-spacing: 0.02em;
+}
+
+#primaryValue {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+#expandedContent {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.row,
+.accountRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.label,
+.accountName {
+    font-size: 12px;
+    opacity: 0.76;
+}
+
+.value,
+.accountValue {
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.accounts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sessions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 2px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sessionRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sessionName {
+    font-size: 11px;
+    opacity: 0.76;
+}
+
+.sessionValue {
+    font-size: 11px;
+    opacity: 0.68;
+    text-transform: capitalize;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 2px;
+}
+
+.intervention {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 9px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 120, 120, 0.25);
+}
+
+.source-claude {
+    border-color: rgba(235, 129, 255, 0.34);
+    background: linear-gradient(180deg, rgba(68, 28, 84, 0.28), rgba(255, 255, 255, 0.06));
+}
+
+.source-codex {
+    border-color: rgba(97, 191, 255, 0.34);
+    background: linear-gradient(180deg, rgba(18, 53, 82, 0.28), rgba(255, 255, 255, 0.06));
+}
+
+.source-agent {
+    border-color: rgba(255, 120, 120, 0.25);
+}
+
+.interventionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sourceBadge,
+.toolBadge {
+    font-size: 10px;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.source-claude .sourceBadge {
+    background: rgba(235, 129, 255, 0.18);
+    color: #f3b3ff;
+}
+
+.source-codex .sourceBadge {
+    background: rgba(97, 191, 255, 0.18);
+    color: #a9ddff;
+}
+
+.interventionTitle {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.interventionDetail {
+    font-size: 11px;
+    line-height: 1.3;
+    opacity: 0.84;
+    word-break: break-word;
+}
+
+.interventionCommand {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    line-height: 1.35;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: rgba(255, 255, 255, 0.94);
+    max-height: 56px;
+    overflow: hidden;
+}
+
+.interventionMeta {
+    font-size: 10px;
+    opacity: 0.68;
+    word-break: break-word;
+    min-height: 12px;
+}
+
+.interventionActions {
+    display: flex;
+    justify-content: stretch;
+    gap: 6px;
+}
+
+.btn {
+    border: none;
+    padding: 7px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 11px;
+    transition: transform 0.1s ease;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.sync {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+}
+
+.approve {
+    background: #34c759;
+    color: white;
+}
+
+.approveAlways {
+    background: rgba(52, 199, 89, 0.18);
+    color: #9ff0b6;
+}
+
+.deny {
+    background: #ff453a;
+    color: white;
+}
+
+.tone-neutral {
+    background: rgba(18, 18, 22, 0.84);
+}
+
+.tone-good {
+    background: linear-gradient(180deg, rgba(15, 23, 22, 0.92), rgba(13, 18, 18, 0.9));
+    border-color: rgba(60, 180, 130, 0.25);
+}
+
+.tone-warn {
+    background: linear-gradient(180deg, rgba(33, 25, 10, 0.94), rgba(22, 18, 10, 0.92));
+    border-color: rgba(255, 185, 60, 0.24);
+}
+
+.tone-danger {
+    background: linear-gradient(180deg, rgba(36, 14, 16, 0.95), rgba(24, 10, 12, 0.93));
+    border-color: rgba(255, 90, 90, 0.26);
+}
+
+.compactHidden {
+    display: none !important;
+}

@@ -1,0 +1,53 @@
+{
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "currency": "USD"
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "currency": "USD"
+    },
+    "codex": {
+      "name": "Codex",
+      "currency": "USD"
+    }
+  },
+  "accounts": [
+    {
+      "id": "openai-main",
+      "provider": "openai",
+      "label": "OpenAI Main",
+      "billingMode": "prepaid",
+      "adminKeyEnv": "OPENAI_ADMIN_KEY",
+      "organizationId": "",
+      "projectId": "",
+      "budgetUsd": 100,
+      "mock": {
+        "balanceUsd": 42.7,
+        "creditTotalUsd": 100,
+        "creditUsedUsd": 57.3
+      }
+    },
+    {
+      "id": "anthropic-main",
+      "provider": "anthropic",
+      "label": "Anthropic Main",
+      "billingMode": "credit",
+      "adminKeyEnv": "ANTHROPIC_ADMIN_KEY",
+      "workspaceId": "",
+      "budgetUsd": 50,
+      "mock": {
+        "balanceUsd": 18.2,
+        "creditTotalUsd": 50,
+        "creditUsedUsd": 31.8
+      }
+    },
+    {
+      "id": "codex-local",
+      "provider": "codex",
+      "label": "Codex Local",
+      "billingMode": "chatgpt_plan"
+    }
+  ]
+}

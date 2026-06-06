@@ -1,0 +1,63 @@
+{
+  "name": "thatisok",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main/index.js",
+  "bin": {
+    "ok": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder build",
+    "build:win": "electron-builder build --win",
+    "build:mac": "electron-builder build --mac",
+    "test:hook": "node bin/test-permission-hook.js codex",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "build": {
+    "appId": "com.thatisok.app",
+    "productName": "ThatIsOk",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "bridge/**/*",
+      "config/**/*",
+      "assets/**/*",
+      "package.json"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "chokidar": "^5.0.0",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.0",
+    "electron-rebuild": "^3.2.9",
+    "electron-store": "^11.0.2",
+    "node-notifier": "^10.0.1"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
+  }
+}

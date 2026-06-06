@@ -1,0 +1,7 @@
+{
+  "syncIntervalMinutes": 10,
+  "alerts": {
+    "lowBalanceUsd": 20,
+    "lowRunwayDays": 3
+  }
+}
