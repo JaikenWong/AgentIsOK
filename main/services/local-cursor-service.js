@@ -126,14 +126,23 @@ class LocalCursorService {
     const spendLimit = usage?.spendLimitUsage || {};
 
     const limit = Number(planUsage.limit || 0);
-    const included = Number(planUsage.includedSpend || 0);
     const totalPercent = Number(planUsage.totalPercentUsed || 0);
     const autoPercent = Number(planUsage.autoPercentUsed || 0);
     const apiPercent = Number(planUsage.apiPercentUsed || 0);
+    const remainingCents = Number(planUsage.remaining || 0);
+    const totalSpendCents = planUsage.totalSpend;
 
-    const includedDollars = limit > 0 ? included / 100 : null;
     const limitDollars = limit > 0 ? limit / 100 : null;
-    const remainingDollars = limit > 0 ? Number(planUsage.remaining || 0) / 100 : null;
+    const remainingDollars = limit > 0 ? remainingCents / 100 : null;
+    // creditUsedUsd = totalSpend (the field's actual name) if provided,
+    // otherwise derive from limit - remaining. The previous code used
+    // `includedSpend` here, which is the plan's INCLUDED allowance (free tier
+    // amount), not the amount spent — so the "Budget" bar showed $20 of
+    // included instead of $18 of actual spend.
+    const usedCents = typeof totalSpendCents === 'number'
+      ? totalSpendCents
+      : Math.max(0, limit - remainingCents);
+    const usedDollars = limit > 0 ? usedCents / 100 : null;
 
     return {
       accountId: 'cursor-local',
@@ -141,7 +150,7 @@ class LocalCursorService {
       label: 'Cursor',
       balanceUsd: remainingDollars,
       creditTotalUsd: limitDollars,
-      creditUsedUsd: includedDollars,
+      creditUsedUsd: usedDollars,
       status: 'live-local',
       capturedAt: Date.now(),
       source: 'local_auth',

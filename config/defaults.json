@@ -23,7 +23,7 @@
       "label": "MiniMax"
     },
     "gemini": {
-      "visible": true,
+      "visible": false,
       "label": "Gemini"
     }
   }

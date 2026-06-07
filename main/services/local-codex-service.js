@@ -196,7 +196,7 @@ class LocalCodexService {
       return true;
     }
 
-    return Date.now() - date.getTime() > 7 * 24 * 60 * 60 * 1000;
+    return Date.now() - date.getTime() > 8 * 24 * 60 * 60 * 1000;
   }
 
   decodeJwtPayload(token) {

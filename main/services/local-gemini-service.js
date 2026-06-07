@@ -33,13 +33,15 @@ class LocalGeminiService {
         plan: 'Gemini CLI',
         usage: {
           todayMessages: todayStats.messageCount,
-          todaySessions: todayStats.sessionCount
+          todaySessions: todayStats.sessionCount,
+          tokens: todayStats.tokens
         },
         meta: {
           expiryDate,
           isStale,
           todayMessages: todayStats.messageCount,
-          todaySessions: todayStats.sessionCount
+          todaySessions: todayStats.sessionCount,
+          tokens: todayStats.tokens
         }
       };
     } catch (err) {
@@ -58,12 +60,17 @@ class LocalGeminiService {
   getTodayStats() {
     const tmpDir = path.join(this.geminiDir, 'tmp');
     if (!fs.existsSync(tmpDir)) {
-      return { messageCount: 0, sessionCount: 0 };
+      return { messageCount: 0, sessionCount: 0, tokens: { input: 0, output: 0, cached: 0 } };
     }
 
     let messageCount = 0;
     let sessionCount = 0;
-    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalCached = 0;
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     try {
       const projects = fs.readdirSync(tmpDir);
@@ -76,10 +83,14 @@ class LocalGeminiService {
 
         const sessionFiles = fs.readdirSync(chatsPath).filter(f => f.endsWith('.jsonl'));
         for (const file of sessionFiles) {
-          if (file.includes(todayStr)) {
+          const filePath = path.join(chatsPath, file);
+          const stats = this.parseSessionFile(filePath, todayStr);
+          if (stats.isToday) {
             sessionCount++;
-            const filePath = path.join(chatsPath, file);
-            messageCount += this.countMessagesInFile(filePath);
+            messageCount += stats.messageCount;
+            totalInput += stats.tokens.input;
+            totalOutput += stats.tokens.output;
+            totalCached += stats.tokens.cached;
           }
         }
       }
@@ -87,27 +98,52 @@ class LocalGeminiService {
       // ignore
     }
 
-    return { messageCount, sessionCount };
+    return {
+      messageCount,
+      sessionCount,
+      tokens: { input: totalInput, output: totalOutput, cached: totalCached }
+    };
   }
 
-  countMessagesInFile(filePath) {
+  parseSessionFile(filePath, todayStr) {
+    let messageCount = 0;
+    let isToday = false;
+    let input = 0;
+    let output = 0;
+    let cached = 0;
+
     try {
       const content = fs.readFileSync(filePath, 'utf8');
       const lines = content.split('\n').filter(Boolean);
-      let count = 0;
+      
       for (const line of lines) {
         try {
           const entry = JSON.parse(line);
-          if (entry.type === 'user' || entry.type === 'gemini') {
-            count++;
+          const timestamp = entry.timestamp || entry.ts;
+          if (timestamp) {
+            const localDate = new Date(timestamp).toLocaleDateString('en-CA'); // YYYY-MM-DD
+            if (localDate === todayStr) {
+              isToday = true;
+            }
           }
-        } catch (e) { }
+
+          if (entry.type === 'user' || entry.type === 'gemini') {
+            messageCount++;
+          }
+
+          if (entry.tokens) {
+            input += Number(entry.tokens.input || 0);
+            output += Number(entry.tokens.output || 0);
+            cached += Number(entry.tokens.cached || 0);
+          }
+        } catch (e) {}
       }
-      return count;
-    } catch (e) {
-      return 0;
-    }
+    } catch (e) {}
+
+    return { isToday, messageCount, tokens: { input, output, cached } };
   }
+
+  // Remove old countMessagesInFile as it's merged into parseSessionFile
 }
 
 module.exports = LocalGeminiService;

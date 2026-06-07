@@ -64,26 +64,28 @@ class LocalCodexProvider {
       if (rateLimit) {
         if (rateLimit.primary_window && rateLimit.primary_window.used_percent !== undefined) {
           const resetAt = rateLimit.primary_window.reset_at;
-          const remainingPercent = Math.max(0, 100 - Number(rateLimit.primary_window.used_percent || 0));
+          const usedPercent = Math.max(0, Math.min(100, Number(rateLimit.primary_window.used_percent || 0)));
+          const remainingPercent = 100 - usedPercent;
           lines.push({
             type: 'progress',
             label: 'Session',
-            used: remainingPercent,
+            used: usedPercent,
             limit: 100,
-            format: { kind: 'percent' },
+            format: { kind: 'percent', mode: 'remaining' },
             subtitle: resetAt
               ? `${Math.round(remainingPercent)}% left · resets ${new Date(resetAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
               : `${Math.round(remainingPercent)}% left`
           });
         }
         if (rateLimit.secondary_window && rateLimit.secondary_window.used_percent !== undefined) {
-          const remainingPercent = Math.max(0, 100 - Number(rateLimit.secondary_window.used_percent || 0));
+          const usedPercent = Math.max(0, Math.min(100, Number(rateLimit.secondary_window.used_percent || 0)));
+          const remainingPercent = 100 - usedPercent;
           lines.push({
             type: 'progress',
             label: 'Weekly',
-            used: remainingPercent,
+            used: usedPercent,
             limit: 100,
-            format: { kind: 'percent' },
+            format: { kind: 'percent', mode: 'remaining' },
             subtitle: `${Math.round(remainingPercent)}% left`
           });
         }
