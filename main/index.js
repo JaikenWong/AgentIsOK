@@ -387,7 +387,8 @@ function setupIPC() {
   ipcMain.handle('hooks:get-status', () => {
     return {
       claude: ConfigInjector.getClaudeStatus(),
-      codex: ConfigInjector.getCodexStatus()
+      codex: ConfigInjector.getCodexStatus(),
+      gemini: ConfigInjector.getGeminiStatus()
     };
   });
 
@@ -396,10 +397,13 @@ function setupIPC() {
       ConfigInjector.injectClaude();
     } else if (target === 'codex') {
       ConfigInjector.injectCodex();
+    } else if (target === 'gemini') {
+      ConfigInjector.injectGemini();
     }
     return {
       claude: ConfigInjector.getClaudeStatus(),
-      codex: ConfigInjector.getCodexStatus()
+      codex: ConfigInjector.getCodexStatus(),
+      gemini: ConfigInjector.getGeminiStatus()
     };
   });
 
@@ -408,10 +412,13 @@ function setupIPC() {
       ConfigInjector.uninjectClaude();
     } else if (target === 'codex') {
       ConfigInjector.uninjectCodex();
+    } else if (target === 'gemini') {
+      ConfigInjector.uninjectGemini();
     }
     return {
       claude: ConfigInjector.getClaudeStatus(),
-      codex: ConfigInjector.getCodexStatus()
+      codex: ConfigInjector.getCodexStatus(),
+      gemini: ConfigInjector.getGeminiStatus()
     };
   });
 
@@ -486,6 +493,7 @@ async function createApp() {
   ConfigInjector.setAppPath(app.getAppPath());
   ConfigInjector.injectClaude();
   ConfigInjector.injectCodex();
+  ConfigInjector.injectGemini();
 
   localAPI = new LocalAPI(usageStore, interventionManager);
   localAPI.start();

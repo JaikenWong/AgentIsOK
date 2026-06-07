@@ -19,6 +19,14 @@ const CODEX_HOOK_EVENTS = [
     'Stop'
 ];
 
+const GEMINI_HOOK_EVENTS = [
+    'SessionStart',
+    'UserPromptSubmit',
+    'PreToolUse',
+    'PostToolUse',
+    'Stop'
+];
+
 const CLAUDE_VALID_HOOK_EVENTS = new Set([
     'PreToolUse',
     'PostToolUse',
@@ -141,6 +149,44 @@ class ConfigInjector {
         }
     }
 
+    static injectGemini() {
+        const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+
+        if (!fs.existsSync(configPath)) {
+            console.log('Gemini settings not found at:', configPath);
+            return;
+        }
+
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            config.hooks = config.hooks || {};
+
+            for (const eventName of GEMINI_HOOK_EVENTS) {
+                const existing = Array.isArray(config.hooks[eventName]) ? config.hooks[eventName] : [];
+                const managedEntry = {
+                    hooks: [
+                        {
+                            type: 'command',
+                            command: this.buildBridgeCommand('gemini', eventName),
+                            timeout: 10
+                        }
+                    ],
+                    _managedBy: MANAGED_KEY
+                };
+
+                const filtered = existing.filter(
+                    (entry) => entry && entry._managedBy !== MANAGED_KEY
+                );
+                config.hooks[eventName] = [...filtered, managedEntry];
+            }
+
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            console.log('Successfully injected ThatIsOk hooks into Gemini settings.');
+        } catch (err) {
+            console.error('Failed to inject into Gemini settings:', err);
+        }
+    }
+
     static uninjectClaude() {
         const configPath = path.join(os.homedir(), '.claude', 'settings.json');
 
@@ -252,6 +298,37 @@ class ConfigInjector {
         }
     }
 
+    static uninjectGemini() {
+        const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+
+        if (!fs.existsSync(configPath)) {
+            return;
+        }
+
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            if (!config.hooks) {
+                return;
+            }
+
+            for (const eventName of GEMINI_HOOK_EVENTS) {
+                if (Array.isArray(config.hooks[eventName])) {
+                    config.hooks[eventName] = config.hooks[eventName].filter(
+                        (entry) => entry && entry._managedBy !== 'ThatIsOk'
+                    );
+                    if (config.hooks[eventName].length === 0) {
+                        delete config.hooks[eventName];
+                    }
+                }
+            }
+
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            console.log('Removed ThatIsOk hooks from Gemini settings.');
+        } catch (err) {
+            console.error('Failed to uninject Gemini settings:', err);
+        }
+    }
+
     static getClaudeStatus() {
         const configPath = path.join(os.homedir(), '.claude', 'settings.json');
         if (!fs.existsSync(configPath)) {
@@ -282,6 +359,26 @@ class ConfigInjector {
             const config = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
             const hooks = config.hooks || {};
             const installed = CODEX_HOOK_EVENTS.some(
+                (event) => hooks[event] && hooks[event].some(
+                    (entry) => entry && entry._managedBy === 'ThatIsOk'
+                )
+            );
+            return { installed };
+        } catch (err) {
+            return { installed: false, reason: err.message };
+        }
+    }
+
+    static getGeminiStatus() {
+        const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+        if (!fs.existsSync(configPath)) {
+            return { installed: false, reason: 'settings.json not found' };
+        }
+
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const hooks = config.hooks || {};
+            const installed = GEMINI_HOOK_EVENTS.some(
                 (event) => hooks[event] && hooks[event].some(
                     (entry) => entry && entry._managedBy === 'ThatIsOk'
                 )

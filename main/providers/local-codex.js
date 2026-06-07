@@ -69,7 +69,7 @@ class LocalCodexProvider {
           lines.push({
             type: 'progress',
             label: 'Session',
-            used: usedPercent,
+            used: remainingPercent,
             limit: 100,
             format: { kind: 'percent', mode: 'remaining' },
             subtitle: resetAt
@@ -83,7 +83,7 @@ class LocalCodexProvider {
           lines.push({
             type: 'progress',
             label: 'Weekly',
-            used: usedPercent,
+            used: remainingPercent,
             limit: 100,
             format: { kind: 'percent', mode: 'remaining' },
             subtitle: `${Math.round(remainingPercent)}% left`
@@ -95,13 +95,12 @@ class LocalCodexProvider {
         const remaining = Number(usage.credits.balance || 0);
         const total = usage.credits.total !== undefined ? Number(usage.credits.total) : 1000;
         if (total > 0) {
-          const used = Math.max(0, total - remaining);
           lines.push({
             type: 'progress',
             label: 'Credits',
-            used,
+            used: remaining,
             limit: total,
-            format: { kind: 'count', suffix: 'credits' },
+            format: { kind: 'count', mode: 'remaining', suffix: 'credits' },
             subtitle: `${remaining} remaining`
           });
         }

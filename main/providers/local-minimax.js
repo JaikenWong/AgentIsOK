@@ -36,9 +36,9 @@ class LocalMinimaxProvider {
       lines.push({
         type: 'progress',
         label: 'Session',
-        used: 100 - pct,
+        used: pct,
         limit: 100,
-        format: { kind: 'percent' },
+        format: { kind: 'percent', mode: 'remaining' },
         subtitle: `${Math.round(pct)}% left`,
         resetsAt: usage.resetsAt
       });
@@ -46,9 +46,9 @@ class LocalMinimaxProvider {
       lines.push({
         type: 'progress',
         label: 'Session',
-        used: usage.used,
+        used: usage.remaining !== undefined ? usage.remaining : usage.used,
         limit: usage.total,
-        format: { kind: 'count', suffix: 'prompts' },
+        format: { kind: 'count', mode: 'remaining', suffix: 'prompts' },
         subtitle: `${usage.remaining !== undefined ? usage.remaining + ' left' : ''}`,
         resetsAt: usage.resetsAt
       });

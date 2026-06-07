@@ -31,10 +31,16 @@ function isPreToolUseEvent(eventData) {
 
 function formatSourceLabel(source) {
   if (source === 'claude') {
-    return 'Claude Code';
+    return 'Claude';
   }
   if (source === 'codex') {
     return 'Codex';
+  }
+  if (source === 'gemini') {
+    return 'Gemini';
+  }
+  if (source === 'minimax') {
+    return 'MiniMax';
   }
   if (source === 'opencode') {
     return 'OpenCode';

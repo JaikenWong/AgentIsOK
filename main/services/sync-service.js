@@ -23,7 +23,11 @@ class SyncService {
       console.log(`Syncing account: ${account.id} (${account.provider})`);
       const balance = await this.withTimeout(adapter.fetchBalance(), 15000, `${account.id} balance timeout`);
       if (balance) {
-        console.log(`Successfully fetched balance for ${account.id}: ${balance.plan || balance.status}`);
+        if (balance.status === 'error') {
+          console.warn(`Balance fetch returned error for ${account.id}: ${balance.message || 'unknown'}`);
+        } else {
+          console.log(`Successfully fetched balance for ${account.id}: ${balance.plan || balance.status}`);
+        }
         this.usageStore.saveBalanceSnapshot(balance);
       }
 

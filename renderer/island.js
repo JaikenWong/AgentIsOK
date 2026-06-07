@@ -33,6 +33,7 @@ let dragPointerDown = null;
 let dragStarted = false;
 let heightSyncFrame = null;
 let lastExpandedHeight = 0;
+let heightSyncDebounce = null;
 let pendingDragMove = null;
 let dragMoveFrame = null;
 let windowState = { mode: 'pill', dockEdge: null, hidden: false };
@@ -154,19 +155,18 @@ function formatUsd(value) {
 }
 
 function getAccountPriority(account) {
-    if (account && account.id === 'codex-local') {
-        return 0;
-    }
-
-    if (account && account.id === 'claude-local') {
-        return 1;
-    }
-
-    if (account && account.status === 'stale') {
-        return 2;
-    }
-
-    return 3;
+    const provider = account?.provider;
+    const order = ['codex', 'claude', 'cursor', 'minimax', 'gemini'];
+    const index = order.indexOf(provider);
+    
+    // If not in our known list, put at the end
+    if (index === -1) return 100;
+    
+    // Secondary priority: stale accounts go after non-stale in the same group
+    // but the user mostly cares about the provider order.
+    if (account?.status === 'stale') return index + 50;
+    
+    return index;
 }
 
 function getTone(data) {
@@ -192,7 +192,7 @@ function getTone(data) {
 function renderSummary(data) {
     currentData = data;
     const visibleAccounts = getPrioritizedVisibleAccounts(data.accounts || []);
-    const progressAccounts = visibleAccounts.filter(hasProgressRing).slice(0, 4);
+    const progressAccounts = visibleAccounts.filter(hasProgressRing).slice(0, 5);
     const primaryAccount = visibleAccounts[0];
 
     if (progressAccounts.length) {
@@ -214,6 +214,10 @@ function renderSummary(data) {
 
     island.classList.remove('tone-neutral', 'tone-good', 'tone-warn', 'tone-danger');
     island.classList.add(getTone(data));
+    
+    if (island.classList.contains('expanded')) {
+        scheduleExpandedHeightSync();
+    }
 }
 
 function renderPillProgress(accounts) {
@@ -222,7 +226,7 @@ function renderPillProgress(accounts) {
         return;
     }
 
-    const displayAccounts = windowState.hidden ? accounts.slice(0, 1) : accounts.slice(0, 4);
+    const displayAccounts = windowState.hidden ? accounts.slice(0, 1) : accounts.slice(0, 5);
 
     pillProgress.classList.remove('hidden');
     pillContent.classList.add('pillContent-rings');
@@ -234,11 +238,14 @@ function renderPillProgress(accounts) {
         const used = Number(progressLine.used || 0);
         const limit = Number(progressLine.limit || 0);
         const percent = Math.max(0, Math.min(100, limit > 0 ? (used / limit) * 100 : 0));
+        
+        // Mode logic: if remaining, the ring shows the remaining part
+        const displayPercent = progressLine.format?.mode === 'remaining' ? percent : (100 - percent);
         const radius = displayAccounts.length > 1 ? 12 : 19;
         const size = displayAccounts.length > 1 ? 28 : 40;
         const center = size / 2;
         const circumference = 2 * Math.PI * radius;
-        const offset = circumference * (1 - percent / 100);
+        const offset = circumference * (1 - displayPercent / 100);
         const label = getProviderShortLabel(account);
 
         return `
@@ -276,8 +283,9 @@ function getProviderShortLabel(account) {
     const map = {
         codex: 'C',
         claude: 'A',
-        cursor: 'R',
-        minimax: 'M'
+        gemini: 'G',
+        minimax: 'M',
+        cursor: 'R'
     };
     return map[account.provider] || String(account.label || '?').slice(0, 1).toUpperCase();
 }
@@ -328,6 +336,10 @@ function renderAccountHeadline(account) {
 
     if (typeof account.balanceUsd === 'number' && !Number.isNaN(account.balanceUsd)) {
         return formatUsd(account.balanceUsd);
+    }
+
+    if (account.usage && typeof account.usage.remainingPercent === 'number') {
+        return `${Math.round(account.usage.remainingPercent)}% left`;
     }
 
     if (account.provider === 'codex' && account.meta && account.meta.planType) {
@@ -453,6 +465,12 @@ function formatSource(source) {
     if (source === 'codex') {
         return 'Codex';
     }
+    if (source === 'gemini') {
+        return 'Gemini';
+    }
+    if (source === 'minimax') {
+        return 'MiniMax';
+    }
     return 'Agent';
 }
 
@@ -555,16 +573,53 @@ function scheduleExpandedHeightSync() {
         const islandStyle = window.getComputedStyle(island);
         const topPadding = Number.parseFloat(islandStyle.paddingTop) || 0;
         const bottomPadding = Number.parseFloat(islandStyle.paddingBottom) || 0;
-        const gap = Number.parseFloat(islandStyle.gap) || 0;
+        const expandedStyle = window.getComputedStyle(expandedContent);
+        const gap = Number.parseFloat(expandedStyle.gap) || 0;
         const headerHeight = pillContent.offsetHeight || 0;
-        const contentHeight = expandedContent.scrollHeight || expandedContent.offsetHeight || 0;
-        const desiredHeight = Math.ceil(topPadding + headerHeight + gap + contentHeight + bottomPadding + 2);
-        if (Math.abs(desiredHeight - lastExpandedHeight) < 6) {
+
+        // Measure all children of expandedContent
+        let contentHeight = 0;
+        const children = Array.from(expandedContent.children);
+        children.forEach(child => {
+            if (child.classList.contains('hidden')) return;
+
+            if (child.id === 'accountsList') {
+                // Sum child card heights directly to avoid flex-inflated scrollHeight.
+                // flex:1 1 auto makes scrollHeight grow with window size — measuring
+                // children gives us the true natural content height.
+                const cards = Array.from(child.children);
+                let listHeight = 0;
+                cards.forEach((card, i) => {
+                    listHeight += card.offsetHeight;
+                    if (i < cards.length - 1) listHeight += gap;
+                });
+                contentHeight += listHeight;
+            } else {
+                contentHeight += child.offsetHeight;
+                const style = window.getComputedStyle(child);
+                const marginBottom = Number.parseFloat(style.marginBottom) || 0;
+                contentHeight += marginBottom;
+            }
+        });
+
+        // Add the container gap between visible children
+        const visibleChildrenCount = children.filter(c => !c.classList.contains('hidden')).length;
+        if (visibleChildrenCount > 1) {
+            contentHeight += (visibleChildrenCount - 1) * gap;
+        }
+
+        const desiredHeight = Math.ceil(topPadding + headerHeight + gap + contentHeight + bottomPadding);
+
+        // Cap: never exceed 80% of available work area
+        const maxH = Math.round(window.screen.availHeight * 0.8);
+        const clampedHeight = Math.min(desiredHeight, maxH);
+
+        if (Math.abs(clampedHeight - lastExpandedHeight) < 8) {
             return;
         }
 
-        lastExpandedHeight = desiredHeight;
-        ipcRenderer.send('island:set-expanded-height', desiredHeight);
+        lastExpandedHeight = clampedHeight;
+        ipcRenderer.send('island:set-expanded-height', clampedHeight);
     });
 }
 
@@ -708,15 +763,9 @@ function renderAccounts(accounts, syncHeight = true) {
     }
 
     accountsList.innerHTML = visibleAccounts
-        .slice(0, 3)
         .map((account) => renderAccountCard(account))
         .join('');
-    if (visibleAccounts.length > 3) {
-        accountsList.insertAdjacentHTML(
-            'beforeend',
-            `<div class="accountMore">+${visibleAccounts.length - 3} more</div>`
-        );
-    }
+
     if (syncHeight) {
         scheduleExpandedHeightSync();
     }

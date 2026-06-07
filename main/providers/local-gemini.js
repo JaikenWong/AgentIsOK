@@ -30,12 +30,17 @@ class LocalGeminiProvider {
     const usage = snapshot.usage || {};
     const tokens = usage.tokens || { input: 0, output: 0, cached: 0 };
 
-    lines.push({
-      type: 'text',
-      label: 'Today',
-      value: `${usage.todayMessages || 0} msg`,
-      subtitle: `${usage.todaySessions || 0} sessions`
-    });
+    // Quota progress bar (remaining mode)
+    if (usage.total > 0) {
+      lines.push({
+        type: 'progress',
+        label: 'Today',
+        used: usage.remaining !== undefined ? usage.remaining : 0,
+        limit: usage.total,
+        format: { kind: 'count', mode: 'remaining', suffix: 'requests' },
+        subtitle: `${usage.remaining !== undefined ? usage.remaining + ' left' : ''} · ${usage.todaySessions || 0} sessions`
+      });
+    }
 
     if (tokens.input > 0 || tokens.output > 0) {
       lines.push({

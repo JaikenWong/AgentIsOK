@@ -45,9 +45,11 @@ body, html {
 #island.expanded {
     height: 100%;
     border-radius: 18px 18px 20px 20px;
-    padding-bottom: 12px;
+    padding-bottom: 0;
     max-height: 100vh;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 #pillContent {
@@ -172,11 +174,7 @@ body, html {
     flex: 1 1 auto;
     min-height: 0;
     -webkit-app-region: no-drag;
-    overflow-y: auto;
-    padding-right: 2px;
-    padding-bottom: 6px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    overflow: hidden;
 }
 
 #expandedContent::-webkit-scrollbar {
@@ -211,9 +209,18 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     padding-top: 2px;
+    padding-right: 2px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.accounts::-webkit-scrollbar {
+    display: none;
 }
 
 .providersPanel {
@@ -355,10 +362,15 @@ body, html {
 
 .actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: stretch;
     flex: 0 0 auto;
-    padding-top: 2px;
-    padding-bottom: 2px;
+    padding: 8px 14px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.actions .btn {
+    flex: 1;
 }
 
 .intervention {
