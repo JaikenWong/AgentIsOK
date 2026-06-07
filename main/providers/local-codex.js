@@ -93,7 +93,7 @@ class LocalCodexProvider {
 
       if (usage.credits && usage.credits.balance !== undefined) {
         const remaining = Number(usage.credits.balance || 0);
-        const total = usage.credits.total !== undefined ? Number(usage.credits.total) : 1000;
+        const total = usage.credits.total !== undefined ? Number(usage.credits.total) : null;
         if (total > 0) {
           lines.push({
             type: 'progress',

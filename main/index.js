@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, nativeImage, screen, globalShortcut } = require('electron');
 const path = require('path');
 
+const { loadEnvFile } = require('./env-loader');
 const Watcher = require('./watcher');
 const SessionStore = require('./session-store');
 const UsageStore = require('./storage/usage-store');
@@ -10,6 +11,8 @@ const createTray = require('./tray');
 const SyncService = require('./services/sync-service');
 const InterventionManager = require('./intervention-manager');
 const { LocalAPI } = require('./local-api');
+
+loadEnvFile();
 
 let islandWindow;
 let trayController;

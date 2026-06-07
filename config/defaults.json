@@ -25,6 +25,10 @@
     "gemini": {
       "visible": false,
       "label": "Gemini"
+    },
+    "deepseek": {
+      "visible": true,
+      "label": "DeepSeek"
     }
   }
 }

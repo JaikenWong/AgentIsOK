@@ -156,7 +156,7 @@ function formatUsd(value) {
 
 function getAccountPriority(account) {
     const provider = account?.provider;
-    const order = ['codex', 'claude', 'cursor', 'minimax', 'gemini'];
+    const order = ['codex', 'claude', 'cursor', 'minimax', 'gemini', 'deepseek'];
     const index = order.indexOf(provider);
     
     // If not in our known list, put at the end
@@ -201,7 +201,7 @@ function renderSummary(data) {
         renderPillProgress(progressAccounts);
     } else if (primaryAccount) {
         primaryLabel.innerText = primaryAccount.label || 'Provider';
-        primaryValue.innerText = primaryAccount.plan || 'Live';
+        primaryValue.innerText = renderAccountHeadline(primaryAccount);
         hidePillProgress();
     } else {
         primaryLabel.innerText = 'Status';
@@ -238,9 +238,7 @@ function renderPillProgress(accounts) {
         const used = Number(progressLine.used || 0);
         const limit = Number(progressLine.limit || 0);
         const percent = Math.max(0, Math.min(100, limit > 0 ? (used / limit) * 100 : 0));
-        
-        // Mode logic: if remaining, the ring shows the remaining part
-        const displayPercent = progressLine.format?.mode === 'remaining' ? percent : (100 - percent);
+        const displayPercent = progressLine.format?.mode === 'remaining' ? percent : Math.max(0, 100 - percent);
         const radius = displayAccounts.length > 1 ? 12 : 19;
         const size = displayAccounts.length > 1 ? 28 : 40;
         const center = size / 2;
@@ -285,7 +283,8 @@ function getProviderShortLabel(account) {
         claude: 'A',
         gemini: 'G',
         minimax: 'M',
-        cursor: 'R'
+        cursor: 'R',
+        deepseek: 'D'
     };
     return map[account.provider] || String(account.label || '?').slice(0, 1).toUpperCase();
 }
@@ -338,6 +337,10 @@ function renderAccountHeadline(account) {
         return formatUsd(account.balanceUsd);
     }
 
+    if (account.usage && typeof account.usage.totalBalance === 'number') {
+        return formatMoney(account.usage.totalBalance, account.usage.currency);
+    }
+
     if (account.usage && typeof account.usage.remainingPercent === 'number') {
         return `${Math.round(account.usage.remainingPercent)}% left`;
     }
@@ -381,11 +384,7 @@ function renderProgressLine(line) {
     const format = line.format || { kind: 'currency', currency: 'USD' };
     
     if (format.kind === 'percent') {
-        if (format.mode === 'remaining') {
-            valueLabel = `${Math.round(100 - used)}%`;
-        } else {
-            valueLabel = `${Math.round(used)}%`;
-        }
+        valueLabel = `${Math.round(format.mode === 'remaining' ? percent : used)}%`;
     } else if (format.kind === 'count') {
         valueLabel = `${used}${format.suffix ? ` ${format.suffix}` : ''}`;
     } else {
@@ -541,6 +540,15 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function formatMoney(value, currency) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return '--';
+    }
+    const symbol = currency === 'USD' ? '$' : currency === 'CNY' ? '¥' : `${currency || ''} `;
+    return `${symbol}${numeric.toFixed(2)}`;
 }
 
 function formatResetDate(value) {

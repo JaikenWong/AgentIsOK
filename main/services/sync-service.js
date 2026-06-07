@@ -9,7 +9,7 @@ class SyncService {
   }
 
   async syncAllAccounts() {
-    const accounts = this.registry.getVisibleAccounts();
+    const accounts = this.registry.getAccounts();
     await Promise.allSettled(accounts.map((account) => this.syncAccount(account)));
   }
 

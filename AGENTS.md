@@ -1,13 +1,13 @@
 <claude-mem-context>
 # Memory Context
 
-# [ThatIsOk] recent context, 2026-06-07 8:25pm GMT+8
+# [ThatIsOk] recent context, 2026-06-07 11:27pm GMT+8
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 13 obs (2,154t read) | 0t work
+Stats: 30 obs (4,864t read) | 0t work
 
 ### Jun 6, 2026
 882 8:05p 🔵 User requested comparative analysis of two open source projects
@@ -24,4 +24,21 @@ Stats: 13 obs (2,154t read) | 0t work
 ### Jun 7, 2026
 893 8:06p ✅ User requested git push to remote including release
 894 8:17p ✅ User requested code review
+895 8:32p ⚖️ User instructed immediate fix on review findings
+896 8:54p 🔴 Minimax remaining quota calculation incorrect
+897 9:12p 🔵 Openusage project located at /Users/jaiken/workplace/ai/openusage
+898 9:41p 🔴 minimax-local balance sync timeout
+899 9:47p 🔴 Minimax balance fetch still errors
+900 9:55p ✅ User confirmed correct version and requested push to remote
+901 " 🔴 Gemini usage calculation incorrect
+902 10:02p 🔵 Cross-project review comparing openusage vs open-vibe-island
+903 10:06p ✅ User checked if primary session still running
+904 10:11p 🔵 Cross-reference usage calculation against two open-source projects
+905 10:23p 🟣 Provider switch overflow with horizontal scroll
+906 10:30p 🔴 Provider-specific info no longer rendered after edit
+907 10:35p 🔴 Expanded provider rows show no detail for enabled providers
+908 10:38p 🟣 Sync circular progress order with provider display order
+909 " ✅ User invoked code-review again
+910 11:04p ✅ User requested code push to remote
+911 11:10p ✅ User requested review of uncommitted changes
 </claude-mem-context>

@@ -19,6 +19,10 @@
     "gemini": {
       "name": "Gemini",
       "currency": "USD"
+    },
+    "deepseek": {
+      "name": "DeepSeek",
+      "currency": "CNY"
     }
   },
   "accounts": [
@@ -51,6 +55,12 @@
       "provider": "gemini",
       "label": "Gemini",
       "billingMode": "free_tier"
+    },
+    {
+      "id": "deepseek-local",
+      "provider": "deepseek",
+      "label": "DeepSeek",
+      "billingMode": "prepaid"
     }
   ]
 }
