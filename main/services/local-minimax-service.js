@@ -10,52 +10,89 @@ class LocalMinimaxService {
   }
 
   async fetchSnapshot() {
-    const keyInfo = this.findApiKey();
-    if (!keyInfo) {
-      return null;
-    }
+    // AUTO region selection (mirrors openusage):
+    //   - if MINIMAX_CN_API_KEY is set, try CN first
+    //   - otherwise try GLOBAL first
+    //   - on auth/HTTP error from the first attempt, fall through to the other
+    const regions = LocalMinimaxService.endpointAttempts();
 
-    this.apiKey = keyInfo.key;
-    this.region = keyInfo.region;
-    this.baseUrl = keyInfo.baseUrl;
+    let firstNetworkError = null;
+    let firstHttpStatus = null;
+    let firstAuthStatus = null;
 
-    try {
-      const data = await this.fetchUsage();
+    for (const region of regions) {
+      const keyInfo = this.loadApiKeyForRegion(region);
+      if (!keyInfo) continue;
+
+      this.apiKey = keyInfo.key;
+      this.region = region;
+      this.baseUrl = keyInfo.baseUrl;
+
+      let data;
+      try {
+        data = await this.fetchUsage();
+      } catch (err) {
+        // Network / non-2xx: remember first such error and try the other region.
+        const m = String(err && err.message || '');
+        if (/^HTTP 4(01|03)/.test(m)) {
+          firstAuthStatus = m;
+        } else if (/^HTTP /.test(m)) {
+          firstHttpStatus = firstHttpStatus || m;
+        } else {
+          firstNetworkError = firstNetworkError || m;
+        }
+        continue;
+      }
+
+      // Diagnostic: log the raw payload so parser issues are easy to diagnose.
+      try {
+        const preview = JSON.stringify(data);
+        console.log(`[minimax:raw:${region}] ${preview.length > 2000 ? preview.slice(0, 2000) + '…[truncated]' : preview}`);
+      } catch (_) { /* ignore JSON.stringify errors (circular) */ }
+
       return this.buildSnapshot(data);
-    } catch (err) {
-      return {
-        accountId: 'minimax-local',
-        provider: 'minimax',
-        label: 'MiniMax',
-        status: 'error',
-        message: `MiniMax fetch failed: ${err.message}`,
-        capturedAt: Date.now(),
-        source: 'local_auth'
-      };
     }
+
+    // No region produced a usable response.
+    const reason = firstAuthStatus
+      ? 'Session expired. Check your MiniMax API key.'
+      : firstHttpStatus
+        ? `Request failed (${firstHttpStatus.replace(/^HTTP /, 'HTTP ')}). Try again later.`
+        : firstNetworkError
+          ? 'Request failed. Check your connection.'
+          : 'MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.';
+    console.error(`[minimax] ${reason}`);
+    return {
+      accountId: 'minimax-local',
+      provider: 'minimax',
+      label: 'MiniMax',
+      status: 'error',
+      message: reason,
+      capturedAt: Date.now(),
+      source: 'local_auth'
+    };
   }
 
-  findApiKey() {
-    const cnKey = process.env.MINIMAX_CN_API_KEY;
-    const globalKey = process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN;
+  loadApiKeyForRegion(region) {
     const customBaseUrl = process.env.MINIMAX_BASE_URL || process.env.MINIMAX_API_HOST;
+    const envVars = region === 'CN'
+      ? ['MINIMAX_CN_API_KEY', 'MINIMAX_API_KEY', 'MINIMAX_API_TOKEN']
+      : ['MINIMAX_API_KEY', 'MINIMAX_API_TOKEN'];
 
-    if (cnKey) {
-      return {
-        key: cnKey,
-        region: 'CN',
-        baseUrl: customBaseUrl || 'https://api.minimaxi.com'
-      };
-    }
-    if (globalKey) {
-      return {
-        key: globalKey,
-        region: 'GLOBAL',
-        baseUrl: customBaseUrl || 'https://www.minimax.io'
-      };
+    for (const name of envVars) {
+      const raw = process.env[name];
+      if (typeof raw === 'string' && raw.trim()) {
+        return {
+          key: raw.trim(),
+          region,
+          baseUrl: customBaseUrl || (region === 'CN' ? 'https://api.minimaxi.com' : 'https://www.minimax.io')
+        };
+      }
     }
 
-    if (process.platform === 'darwin') {
+    // macOS keychain fallback (GLOBAL only, since the openusage reference
+    // only stores under the global keychain service name).
+    if (region === 'GLOBAL' && process.platform === 'darwin') {
       try {
         const { execSync } = require('child_process');
         const key = execSync(
@@ -75,12 +112,12 @@ class LocalMinimaxService {
     return null;
   }
 
-  async fetchUsage() {
-    const baseUrl = this.baseUrl || (this.region === 'CN'
-      ? 'https://api.minimaxi.com'
-      : 'https://www.minimax.io');
+  static endpointAttempts() {
+    return process.env.MINIMAX_CN_API_KEY ? ['CN', 'GLOBAL'] : ['GLOBAL', 'CN'];
+  }
 
-    const res = await fetch(`${baseUrl}/v1/token_plan/remains`, {
+  async fetchUsage() {
+    const res = await fetch(`${this.baseUrl}/v1/token_plan/remains`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
@@ -317,6 +354,7 @@ class LocalMinimaxService {
         total: finalTotal,
         remaining: finalRemaining,
         remainingPercent: remainingPercentOut,
+        isPercentMode,
         resetsAt,
         periodDurationMs
       },
