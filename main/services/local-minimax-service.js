@@ -127,7 +127,20 @@ class LocalMinimaxService {
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const payload = await res.json();
+
+    const data = (payload && typeof payload.data === 'object' && payload.data) || payload || {};
+    const baseResp = data.base_resp || payload.base_resp || null;
+    const apiStatusCode = LocalMinimaxService.readNumber(baseResp?.status_code);
+    if (apiStatusCode !== null && apiStatusCode !== 0) {
+      const msg = LocalMinimaxService.readString(baseResp?.status_msg) || `status ${apiStatusCode}`;
+      if (apiStatusCode === 1004 || /invalid.*api.?key|unauthorized|auth/i.test(msg)) {
+        throw new Error(`HTTP 401 ${msg}`);
+      }
+      throw new Error(`HTTP 500 ${msg}`);
+    }
+
+    return payload;
   }
 
   buildSnapshot(payload) {

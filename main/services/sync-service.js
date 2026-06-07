@@ -21,13 +21,13 @@ class SyncService {
 
     try {
       console.log(`Syncing account: ${account.id} (${account.provider})`);
-      const balance = await this.withTimeout(adapter.fetchBalance(), 6000, `${account.id} balance timeout`);
+      const balance = await this.withTimeout(adapter.fetchBalance(), 15000, `${account.id} balance timeout`);
       if (balance) {
         console.log(`Successfully fetched balance for ${account.id}: ${balance.plan || balance.status}`);
         this.usageStore.saveBalanceSnapshot(balance);
       }
 
-      const usageEvents = await this.withTimeout(adapter.fetchDailyCosts(), 6000, `${account.id} usage timeout`);
+      const usageEvents = await this.withTimeout(adapter.fetchDailyCosts(), 15000, `${account.id} usage timeout`);
       if (usageEvents && usageEvents.length) {
         this.usageStore.replaceProviderDailyCosts(account.id, usageEvents);
       }

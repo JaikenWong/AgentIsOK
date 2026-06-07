@@ -50,9 +50,11 @@
       "main/**/*",
       "renderer/**/*",
       "bridge/**/*",
+      "shared/**/*",
       "config/**/*",
       "assets/**/*",
       "plugins/**/*",
+      "bin/**/*",
       "package.json"
     ]
   },

@@ -21,6 +21,14 @@ class Watcher {
             return { ok: true, recorded: false, action: 'prompt_submitted' };
         }
 
+        if (eventName === 'pretooluse') {
+            return { ok: true, recorded: false, action: 'tool_invoked' };
+        }
+
+        if (eventName === 'posttooluse') {
+            return { ok: true, recorded: false, action: 'tool_completed' };
+        }
+
         if (hookEvents.isPermissionLikeEvent(normalized)) {
             const response = await interventionManager.request(
                 hookEvents.buildInterventionModel(normalized)
@@ -31,22 +39,6 @@ class Watcher {
                 approved: response.approved,
                 allowPersistent: response.allowPersistent
             });
-        }
-
-        if (eventName === 'pretooluse') {
-            const response = await interventionManager.request(
-                hookEvents.buildInterventionModel(normalized)
-            );
-
-            return hookEvents.buildHookDecisionResponse({
-                requiresDecision: true,
-                approved: response.approved,
-                allowPersistent: response.allowPersistent
-            });
-        }
-
-        if (eventName === 'posttooluse') {
-            return { ok: true, recorded: false, action: 'tool_completed' };
         }
 
         const usageEvent = this.parseContent(normalized.raw);

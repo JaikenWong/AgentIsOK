@@ -29,32 +29,27 @@ class LocalMinimaxProvider {
     const lines = [];
     const usage = snapshot.usage || {};
 
-    if (usage.total > 0) {
+    // Percent mode: API returned percent-only data (no count totals).
+    // Shows a percent progress bar instead of count-based.
+    if (usage.isPercentMode) {
+      const pct = Math.min(100, Math.max(0, Number(usage.remainingPercent) || 0));
+      lines.push({
+        type: 'progress',
+        label: 'Session',
+        used: 100 - pct,
+        limit: 100,
+        format: { kind: 'percent' },
+        subtitle: `${Math.round(pct)}% left`,
+        resetsAt: usage.resetsAt
+      });
+    } else if (usage.total > 0) {
       lines.push({
         type: 'progress',
         label: 'Session',
         used: usage.used,
         limit: usage.total,
         format: { kind: 'count', suffix: 'prompts' },
-        resetsAt: usage.resetsAt
-      });
-    } else if (Number.isFinite(Number(usage.remainingPercent))) {
-      lines.push({
-        type: 'progress',
-        label: 'Session',
-        used: 100 - usage.remainingPercent,
-        limit: 100,
-        format: { kind: 'percent', mode: 'remaining' },
-        subtitle: `${Math.round(usage.remainingPercent)}% left`,
-        resetsAt: usage.resetsAt
-      });
-    } else if (Number.isFinite(Number(usage.remaining)) && usage.remaining > 0) {
-      lines.push({
-        type: 'progress',
-        label: 'Session',
-        used: 0,
-        limit: usage.remaining,
-        format: { kind: 'count', suffix: 'prompts' },
+        subtitle: `${usage.remaining !== undefined ? usage.remaining + ' left' : ''}`,
         resetsAt: usage.resetsAt
       });
     }
