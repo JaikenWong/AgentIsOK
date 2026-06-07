@@ -93,94 +93,213 @@ class LocalMinimaxService {
     return res.json();
   }
 
-  buildSnapshot(data) {
-    const remains = data?.model_remains || [];
-    const first = this.pickPrimaryRemain(remains);
+  buildSnapshot(payload) {
+    // Some endpoints wrap the body in {data: {...}}. openusage handles both.
+    const data = (payload && typeof payload.data === 'object' && payload.data) || payload || {};
 
-    // Read raw field values. Field names are taken at face value: usage_count
-    // is USAGE (consumed), remaining_count is REMAINING, used_count is also USED.
-    // Don't trust undocumented "usage = remaining" semantics.
-    const total = Number(first.current_interval_total_count || 0);
-
-    const remainingField = LocalMinimaxService.pickDefinedField(first, [
-      'current_interval_remaining_count',
-      'current_interval_remains_count',
-      'current_interval_remain_count',
-      'remaining_count',
-      'remains_count',
-      'remaining',
-      'remains',
-      'left_count'
-    ]);
-    const explicitUsedField = LocalMinimaxService.pickDefinedField(first, [
-      'current_interval_usage_count',
-      'current_interval_used_count',
-      'used_count',
-      'used'
-    ]);
-
-    const hasRemaining = remainingField !== null;
-    const hasUsed = explicitUsedField !== null;
-    const remainingRaw = hasRemaining ? Number(remainingField) : null;
-    const usedRaw = hasUsed ? Number(explicitUsedField) : null;
-
-    let usedCount;
-    let remaining;
-
-    if (hasRemaining && hasUsed) {
-      // Both present — use them; if sum doesn't match total, prefer explicit remaining.
-      usedCount = Math.max(0, usedRaw);
-      remaining = Math.max(0, remainingRaw);
-      if (total > 0 && Math.abs((usedCount + remaining) - total) > Math.max(1, total * 0.05)) {
-        // Self-inconsistent: recompute used from total - remaining.
-        usedCount = Math.max(0, total - remaining);
-        console.warn(
-          `[minimax] model "${first.model_name || '?'}": used+remaining (${usedCount + remaining}) != total (${total}); using total - remaining`
-        );
-      }
-    } else if (hasRemaining) {
-      remaining = Math.max(0, remainingRaw);
-      usedCount = Math.max(0, total - remaining);
-    } else if (hasUsed) {
-      usedCount = Math.max(0, usedRaw);
-      remaining = Math.max(0, total - usedCount);
-    } else {
-      usedCount = 0;
-      remaining = Math.max(0, total);
+    const baseResp = (data && data.base_resp) || payload?.base_resp || null;
+    const statusCode = LocalMinimaxService.readNumber(baseResp?.status_code);
+    const statusMessage = LocalMinimaxService.readString(baseResp?.status_msg);
+    if (statusCode !== null && statusCode !== 0) {
+      return {
+        accountId: 'minimax-local',
+        provider: 'minimax',
+        label: 'MiniMax',
+        status: 'error',
+        message: statusMessage
+          ? `MiniMax API error: ${statusMessage}`
+          : `MiniMax API error (status ${statusCode})`,
+        capturedAt: Date.now(),
+        source: 'local_auth'
+      };
     }
 
-    if (total > 0) {
-      if (usedCount > total) usedCount = total;
-      if (remaining > total) remaining = total;
-    } else {
-      // total=0 means the API didn't return a cap; show used as-is without clamping to 0.
-      usedCount = Math.max(0, usedCount);
-      remaining = Math.max(0, remaining);
+    // model_remains may live under several keys (snake/camel, top-level or under data).
+    const remains = LocalMinimaxService.pickFirstArray(data, [
+      'model_remains',
+      'modelRemains'
+    ]) || LocalMinimaxService.pickFirstArray(payload, [
+      'model_remains',
+      'modelRemains'
+    ]) || [];
+    if (!remains.length) {
+      return {
+        accountId: 'minimax-local',
+        provider: 'minimax',
+        label: 'MiniMax',
+        status: 'error',
+        message: 'Could not parse usage data.',
+        capturedAt: Date.now(),
+        source: 'local_auth'
+      };
     }
 
-    // CN API returns model call counts (÷15 for prompts); GLOBAL returns prompt counts.
-    const MODEL_CALLS_PER_PROMPT = 15;
     const isCn = this.region === 'CN';
-    const multiplier = isCn ? 1 / MODEL_CALLS_PER_PROMPT : 1;
+    const MODEL_CALLS_PER_PROMPT = 15;
+    const displayMultiplier = isCn ? 1 / MODEL_CALLS_PER_PROMPT : 1;
 
-    const finalUsed = Math.round(usedCount * multiplier);
-    const finalTotal = Math.round(total * multiplier);
-    const finalRemaining = Math.round(remaining * multiplier);
+    // Pick the right model_remains entry. openusage's policy:
+    //   1. first entry with total > 0 that survives the CN scaling
+    //   2. fallback: percent-bearing entry whose model_name === "general"
+    //   3. fallback: any percent-bearing entry
+    let chosen = null;
+    let percentGeneralCandidate = null;
+    let percentAnyCandidate = null;
+    for (const item of remains) {
+      if (!item || typeof item !== 'object') continue;
+      const total = LocalMinimaxService.readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount);
+      if (total !== null && total > 0 && Math.round(total * displayMultiplier) > 0) {
+        chosen = item;
+        break;
+      }
+      const pct = LocalMinimaxService.readNumber(item.current_interval_remaining_percent ?? item.currentIntervalRemainingPercent);
+      if (pct !== null && pct >= 0 && pct <= 100) {
+        const modelName = LocalMinimaxService.readString(item.model_name ?? item.modelName);
+        if (!percentAnyCandidate) percentAnyCandidate = item;
+        if (!percentGeneralCandidate && modelName === 'general') percentGeneralCandidate = item;
+      }
+    }
+    if (!chosen) chosen = percentGeneralCandidate || percentAnyCandidate;
+    if (!chosen) {
+      return {
+        accountId: 'minimax-local',
+        provider: 'minimax',
+        label: 'MiniMax',
+        status: 'error',
+        message: 'Could not parse usage data.',
+        capturedAt: Date.now(),
+        source: 'local_auth'
+      };
+    }
 
-    const remainingPercent = this.computeRemainingPercent(first, {
-      total: finalTotal,
-      used: finalUsed,
-      remaining: finalRemaining
-    });
-
-    console.log(
-      `[minimax:${this.region}] model=${first.model_name || '?'} ` +
-      `raw_total=${total} raw_used=${usedCount} raw_remaining=${remaining} ` +
-      `→ final total=${finalTotal} used=${finalUsed} remaining=${finalRemaining} (${remainingPercent}%)`
+    const total = LocalMinimaxService.readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount) || 0;
+    const remainingPercent = LocalMinimaxService.readNumber(
+      chosen.current_interval_remaining_percent ?? chosen.currentIntervalRemainingPercent
     );
 
-    const planName = data?.current_subscribe_title || data?.plan_name || data?.plan || 'MiniMax';
-    const endTime = first.end_time || first.remains_time || null;
+    // Percent mode: API didn't return a cap but did return a percent.
+    const hasDisplayableCount = total > 0 && Math.round(total * displayMultiplier) > 0;
+
+    let usedCount;
+    let finalTotal;
+    let finalUsed;
+    let finalRemaining;
+    let isPercentMode = false;
+    let remainingPercentOut = null;
+
+    if (!hasDisplayableCount && remainingPercent !== null) {
+      isPercentMode = true;
+      const percentUsed = 100 - remainingPercent;
+      const percentRemaining = remainingPercent;
+      // For percent mode, percent-mode CN responses should NOT be scaled
+      // (the percent is already a fraction, not a model-call count).
+      finalUsed = percentUsed;
+      finalTotal = 100;
+      finalRemaining = percentRemaining;
+      remainingPercentOut = percentRemaining;
+      usedCount = percentUsed;
+    } else if (!hasDisplayableCount) {
+      return {
+        accountId: 'minimax-local',
+        provider: 'minimax',
+        label: 'MiniMax',
+        status: 'error',
+        message: 'Could not parse usage data.',
+        capturedAt: Date.now(),
+        source: 'local_auth'
+      };
+    } else {
+      // Count mode. CRITICAL: openusage treats `current_interval_usage_count`
+      // as REMAINING (MiniMax "remains API" semantics). Only fields explicitly
+      // named `used_count` / `current_interval_used_count` are USED.
+      const usageFieldCount = LocalMinimaxService.readNumber(
+        chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount
+      );
+      const remainingCount = LocalMinimaxService.readNumber(
+        chosen.current_interval_remaining_count ??
+          chosen.currentIntervalRemainingCount ??
+          chosen.current_interval_remains_count ??
+          chosen.currentIntervalRemainsCount ??
+          chosen.current_interval_remain_count ??
+          chosen.currentIntervalRemainCount ??
+          chosen.remaining_count ??
+          chosen.remainingCount ??
+          chosen.remains_count ??
+          chosen.remainsCount ??
+          chosen.remaining ??
+          chosen.remains ??
+          chosen.left_count ??
+          chosen.leftCount
+      );
+      const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount;
+      const explicitUsed = LocalMinimaxService.readNumber(
+        chosen.current_interval_used_count ??
+          chosen.currentIntervalUsedCount ??
+          chosen.used_count ??
+          chosen.used
+      );
+
+      usedCount = explicitUsed;
+      if (usedCount === null) {
+        if (inferredRemainingCount !== null) usedCount = total - inferredRemainingCount;
+        else usedCount = 0;
+      }
+      if (usedCount < 0) usedCount = 0;
+      if (usedCount > total) usedCount = total;
+
+      const remaining = inferredRemainingCount !== null
+        ? Math.max(0, inferredRemainingCount)
+        : Math.max(0, total - usedCount);
+
+      // CN: scale model-call counts to prompts. GLOBAL: leave as-is.
+      finalUsed = Math.round(usedCount * displayMultiplier);
+      finalTotal = Math.round(total * displayMultiplier);
+      finalRemaining = Math.round(remaining * displayMultiplier);
+      remainingPercentOut = finalTotal > 0
+        ? Math.max(0, Math.min(100, (finalRemaining / finalTotal) * 100))
+        : null;
+    }
+
+    // Reset time + period duration
+    const startMs = LocalMinimaxService.epochToMs(chosen.start_time ?? chosen.startTime);
+    const endMs = LocalMinimaxService.epochToMs(chosen.end_time ?? chosen.endTime);
+    const remainsRaw = LocalMinimaxService.readNumber(chosen.remains_time ?? chosen.remainsTime);
+    const nowMs = Date.now();
+    const remainsMs = LocalMinimaxService.inferRemainsMs(remainsRaw, endMs, nowMs);
+    const resetsAt = endMs !== null
+      ? new Date(endMs).toISOString()
+      : remainsMs !== null
+        ? new Date(nowMs + remainsMs).toISOString()
+        : null;
+    const periodDurationMs = (startMs !== null && endMs !== null && endMs > startMs)
+      ? endMs - startMs
+      : null;
+
+    // Plan name: explicit fields first, then inference from known tier limits.
+    const explicitPlanName = LocalMinimaxService.pickFirstString([
+      data.current_subscribe_title,
+      data.plan_name,
+      data.plan,
+      data.current_plan_title,
+      data.combo_title,
+      payload?.current_subscribe_title,
+      payload?.plan_name,
+      payload?.plan,
+    ]);
+    const normalizedPlanName = LocalMinimaxService.normalizePlanName(explicitPlanName);
+    const inferredPlanName = !isPercentMode
+      ? LocalMinimaxService.inferPlanNameFromLimit(total, this.region)
+      : null;
+    const planName = normalizedPlanName || inferredPlanName;
+    const planSuffix = this.region ? ` (${this.region})` : '';
+
+    console.log(
+      `[minimax:${this.region}] mode=${isPercentMode ? 'percent' : 'count'} ` +
+      `model=${LocalMinimaxService.readString(chosen.model_name ?? chosen.modelName) || '?'} ` +
+      `raw_total=${total} raw_used=${usedCount} ` +
+      `→ used=${finalUsed} remaining=${finalRemaining} total=${finalTotal} (${remainingPercentOut !== null ? Math.round(remainingPercentOut) + '%' : '-'})` +
+      ` plan=${planName || '?'}`
+    );
 
     return {
       accountId: 'minimax-local',
@@ -192,18 +311,20 @@ class LocalMinimaxService {
       status: 'live-local',
       capturedAt: Date.now(),
       source: 'local_auth',
-      plan: `${planName} (${this.region})`,
+      plan: planName ? `${planName}${planSuffix}` : 'MiniMax',
       usage: {
         used: finalUsed,
         total: finalTotal,
         remaining: finalRemaining,
-        remainingPercent,
-        resetsAt: endTime
+        remainingPercent: remainingPercentOut,
+        resetsAt,
+        periodDurationMs
       },
       meta: {
         region: this.region,
         baseUrl: this.baseUrl,
-        modelRemains: remains
+        modelRemains: remains,
+        isPercentMode
       }
     };
   }
@@ -216,6 +337,15 @@ class LocalMinimaxService {
     return remains
       .slice()
       .sort((left, right) => this.getRemainScore(right) - this.getRemainScore(left))[0] || {};
+  }
+
+  getRemainScore(item) {
+    if (!item || typeof item !== 'object') return 0;
+    const total = Number(item.current_interval_total_count || 0);
+    const usage = Number(item.current_interval_usage_count || 0);
+    const remaining = Number(item.current_interval_remaining_count || item.current_interval_remains_count || 0);
+    const pct = Number(item.current_interval_remaining_percent || 0);
+    return (total > 0 ? 1000 : 0) + (usage > 0 ? 400 : 0) + (remaining > 0 ? 200 : 0) + (pct > 0 ? 100 : 0) + total + usage + remaining;
   }
 
   // Read the first field on `item` whose value is neither null nor undefined.
@@ -232,51 +362,104 @@ class LocalMinimaxService {
     return null;
   }
 
-  getRemainScore(item) {
-    if (!item || typeof item !== 'object') {
-      return 0;
-    }
-
-    const total = Number(item.current_interval_total_count || 0);
-    const used = Number(item.current_interval_usage_count || 0);
-    const remaining = Number(item.current_interval_remaining_count || item.current_interval_remains_count || 0);
-    const remainingPercent = Number(item.current_interval_remaining_percent || 0);
-
-    return (
-      (total > 0 ? 1000 : 0) +
-      (used > 0 ? 400 : 0) +
-      (remaining > 0 ? 200 : 0) +
-      (remainingPercent > 0 ? 100 : 0) +
-      total + used + remaining
-    );
+  // openusage-style helpers (ported for parity with the reference implementation).
+  static readString(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
   }
 
-  computeRemainingPercent(item, fallback = {}) {
-    const direct = Number(item?.current_interval_remaining_percent);
-    if (Number.isFinite(direct) && direct >= 0 && direct <= 100) {
-      return direct;
+  static readNumber(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  static pickFirstString(values) {
+    for (const v of values || []) {
+      const s = LocalMinimaxService.readString(v);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  static pickFirstArray(obj, keys) {
+    if (!obj || typeof obj !== 'object') return null;
+    for (const k of keys) {
+      const v = obj[k];
+      if (Array.isArray(v)) return v;
+    }
+    return null;
+  }
+
+  static normalizePlanName(value) {
+    const raw = LocalMinimaxService.readString(value);
+    if (!raw) return null;
+    const compact = raw.replace(/\s+/g, ' ').trim();
+    const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, '').trim();
+    if (withoutPrefix) return withoutPrefix;
+    if (/coding\s+plan/i.test(compact)) return 'Coding Plan';
+    return compact;
+  }
+
+  static inferPlanNameFromLimit(totalCount, region) {
+    const n = LocalMinimaxService.readNumber(totalCount);
+    if (n === null || n <= 0) return null;
+
+    // CN: 600/1500/4500 model-call counts → Starter/Plus/Max.
+    if (region === 'CN') {
+      const CN_TIERS = { 600: 'Starter', 1500: 'Plus', 4500: 'Max' };
+      return CN_TIERS[Math.round(n)] || null;
     }
 
-    const total = Number(fallback.total || item?.current_interval_total_count || 0);
-    const used = Number(fallback.used || item?.current_interval_usage_count || 0);
-    const remaining = Number(fallback.remaining || item?.current_interval_remaining_count || item?.current_interval_remains_count || 0);
+    // GLOBAL: 100/300/1000/2000 prompts directly.
+    const GLOBAL_TIERS = { 100: 'Starter', 300: 'Plus', 1000: 'Max', 2000: 'Ultra' };
+    if (GLOBAL_TIERS[Math.round(n)]) return GLOBAL_TIERS[Math.round(n)];
 
-    if (total > 0 && remaining > 0) {
-      return Math.max(0, Math.min(100, (remaining / total) * 100));
+    // If a non-tier number is divisible by 15, try the scaled value as prompts.
+    if (n % 15 === 0) {
+      const prompts = n / 15;
+      return GLOBAL_TIERS[Math.round(prompts)] || null;
     }
+    return null;
+  }
 
-    if (total > 0 && used >= 0) {
-      return Math.max(0, Math.min(100, 100 - (used / total) * 100));
-    }
+  static epochToMs(epoch) {
+    const n = LocalMinimaxService.readNumber(epoch);
+    if (n === null) return null;
+    // < 1e10 → seconds (epoch seconds fit in 1e10 around year 2286).
+    return Math.abs(n) < 1e10 ? n * 1000 : n;
+  }
 
-    if (used > 0 || remaining > 0) {
-      const sum = used + remaining;
-      if (sum > 0) {
-        return Math.max(0, Math.min(100, (remaining / sum) * 100));
+  static inferRemainsMs(remainsRaw, endMs, nowMs) {
+    if (remainsRaw === null || remainsRaw <= 0) return null;
+    const asSecondsMs = remainsRaw * 1000;
+    const asMillisecondsMs = remainsRaw;
+
+    // If end_time exists, pick the unit that lands closer to it.
+    if (endMs !== null) {
+      const toEndMs = endMs - nowMs;
+      if (toEndMs > 0) {
+        const secDelta = Math.abs(asSecondsMs - toEndMs);
+        const msDelta = Math.abs(asMillisecondsMs - toEndMs);
+        return secDelta <= msDelta ? asSecondsMs : asMillisecondsMs;
       }
     }
 
-    return null;
+    // Coding Plan resets every 5h ± 10min.
+    const maxExpectedMs = 5 * 60 * 60 * 1000 + 10 * 60 * 1000;
+    const secondsLooksValid = asSecondsMs <= maxExpectedMs;
+    const millisecondsLooksValid = asMillisecondsMs <= maxExpectedMs;
+    if (secondsLooksValid && !millisecondsLooksValid) return asSecondsMs;
+    if (millisecondsLooksValid && !secondsLooksValid) return asMillisecondsMs;
+    if (secondsLooksValid && millisecondsLooksValid) return asSecondsMs;
+
+    const secOverflow = Math.abs(asSecondsMs - maxExpectedMs);
+    const msOverflow = Math.abs(asMillisecondsMs - maxExpectedMs);
+    return secOverflow <= msOverflow ? asSecondsMs : asMillisecondsMs;
   }
 }
 
