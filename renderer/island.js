@@ -318,12 +318,12 @@ function renderAccountCard(account) {
 }
 
 function renderAccountHeadline(account) {
-    if (account.meta && account.meta.manualPlan) {
-        return account.meta.manualPlan;
-    }
-
     if (account.status === 'stale') {
         return 'Stale';
+    }
+
+    if (account.meta && account.meta.manualPlan) {
+        return account.meta.manualPlan;
     }
 
     if (typeof account.balanceUsd === 'number' && !Number.isNaN(account.balanceUsd)) {
@@ -369,7 +369,11 @@ function renderProgressLine(line) {
     const format = line.format || { kind: 'currency', currency: 'USD' };
     
     if (format.kind === 'percent') {
-        valueLabel = `${Math.round(used)}%`;
+        if (format.mode === 'remaining') {
+            valueLabel = `${Math.round(100 - used)}%`;
+        } else {
+            valueLabel = `${Math.round(used)}%`;
+        }
     } else if (format.kind === 'count') {
         valueLabel = `${used}${format.suffix ? ` ${format.suffix}` : ''}`;
     } else {
@@ -704,8 +708,15 @@ function renderAccounts(accounts, syncHeight = true) {
     }
 
     accountsList.innerHTML = visibleAccounts
+        .slice(0, 3)
         .map((account) => renderAccountCard(account))
         .join('');
+    if (visibleAccounts.length > 3) {
+        accountsList.insertAdjacentHTML(
+            'beforeend',
+            `<div class="accountMore">+${visibleAccounts.length - 3} more</div>`
+        );
+    }
     if (syncHeight) {
         scheduleExpandedHeightSync();
     }

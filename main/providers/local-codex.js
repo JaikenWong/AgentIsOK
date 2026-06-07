@@ -37,7 +37,6 @@ class LocalCodexProvider {
 
   buildLines(snapshot, options = {}) {
     const lines = [];
-    const planType = options.effectivePlan || snapshot.plan || 'ChatGPT login';
     const lastRefresh = snapshot.meta && snapshot.meta.lastRefresh ? this.formatLastRefresh(snapshot.meta.lastRefresh) : null;
     const stale = snapshot.status === 'stale' || (snapshot.meta && snapshot.meta.isStale);
     const subtitleBits = [];
@@ -57,13 +56,6 @@ class LocalCodexProvider {
         subtitle: subtitleBits.join(' · ') || 'Usage in Codex dashboard'
       });
     }
-
-    lines.unshift({
-      type: 'text',
-      label: 'Plan',
-      value: planType,
-      subtitle: options.manualPlan ? 'manual override' : 'local auth'
-    });
 
     if (snapshot.usage) {
       const usage = snapshot.usage;
@@ -97,18 +89,20 @@ class LocalCodexProvider {
         }
       }
 
-      if (usage.credits && usage.credits.balance !== undefined && usage.credits.total !== undefined) {
-        const remaining = usage.credits.balance;
-        const total = Number(usage.credits.total || 0);
-        const used = Math.max(0, total - remaining);
-        lines.push({
-          type: 'progress',
-          label: 'Credits',
-          used,
-          limit: total,
-          format: { kind: 'count', suffix: 'credits' },
-          subtitle: `${remaining} remaining`
-        });
+      if (usage.credits && usage.credits.balance !== undefined) {
+        const remaining = Number(usage.credits.balance || 0);
+        const total = usage.credits.total !== undefined ? Number(usage.credits.total) : 1000;
+        if (total > 0) {
+          const used = Math.max(0, total - remaining);
+          lines.push({
+            type: 'progress',
+            label: 'Credits',
+            used,
+            limit: total,
+            format: { kind: 'count', suffix: 'credits' },
+            subtitle: `${remaining} remaining`
+          });
+        }
       }
     }
 

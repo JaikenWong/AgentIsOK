@@ -44,7 +44,8 @@ class LocalMinimaxProvider {
         label: 'Session',
         used: 100 - usage.remainingPercent,
         limit: 100,
-        format: { kind: 'percent' },
+        format: { kind: 'percent', mode: 'remaining' },
+        subtitle: `${Math.round(usage.remainingPercent)}% left`,
         resetsAt: usage.resetsAt
       });
     } else if (Number.isFinite(Number(usage.remaining)) && usage.remaining > 0) {

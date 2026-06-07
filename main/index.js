@@ -349,8 +349,9 @@ function setupIPC() {
     }
 
     const area = getWorkArea();
-    const maxHeight = Math.max(WINDOW_SIZES.expanded.height, area.height - WINDOW_MARGIN * 2);
-    const clampedHeight = Math.min(Math.max(Math.round(nextHeight), WINDOW_SIZES.expanded.height), maxHeight);
+    const MIN_EXPANDED_HEIGHT = 80;
+    const maxHeight = Math.max(MIN_EXPANDED_HEIGHT, area.height - WINDOW_MARGIN * 2);
+    const clampedHeight = Math.min(Math.max(Math.round(nextHeight), MIN_EXPANDED_HEIGHT), maxHeight);
     if (clampedHeight === islandState.expandedHeight) {
       return;
     }
@@ -420,7 +421,11 @@ function setupIPC() {
 
   ipcMain.on('providers:set-visibility', (_event, provider, visible) => {
     syncService.registry.setProviderVisibility(provider, visible);
-    broadcastSummary();
+    if (visible) {
+      syncNow().catch((err) => console.error('Visibility-triggered sync failed:', err));
+    } else {
+      broadcastSummary();
+    }
   });
 }
 

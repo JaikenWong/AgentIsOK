@@ -6,12 +6,14 @@ const LocalCodexProvider = require('./local-codex');
 const LocalClaudeProvider = require('./local-claude');
 const LocalCursorProvider = require('./local-cursor');
 const LocalMinimaxProvider = require('./local-minimax');
+const LocalGeminiProvider = require('./local-gemini');
 
 const PROVIDER_MAP = {
   codex: LocalCodexProvider,
   claude: LocalClaudeProvider,
   cursor: LocalCursorProvider,
-  minimax: LocalMinimaxProvider
+  minimax: LocalMinimaxProvider,
+  gemini: LocalGeminiProvider
 };
 
 const DEFAULTS_PATH = path.join(__dirname, '..', '..', 'config', 'defaults.json');

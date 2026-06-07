@@ -9,7 +9,7 @@ class SyncService {
   }
 
   async syncAllAccounts() {
-    const accounts = this.registry.getAccounts();
+    const accounts = this.registry.getVisibleAccounts();
     await Promise.allSettled(accounts.map((account) => this.syncAccount(account)));
   }
 
@@ -49,12 +49,11 @@ class SyncService {
   }
 
   withTimeout(promise, timeoutMs, message) {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(message)), timeoutMs);
-      })
-    ]);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 }
 

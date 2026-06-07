@@ -98,18 +98,56 @@ class LocalMinimaxService {
     const first = this.pickPrimaryRemain(remains);
 
     const total = Number(first.current_interval_total_count || 0);
-    const used = Number(first.current_interval_usage_count || 0);
-    const remaining = Number(first.current_interval_remaining_count || first.current_interval_remains_count || 0);
-    const remainingPercent = Number(first.current_interval_remaining_percent || 0);
+    const usageFieldCount = Number(first.current_interval_usage_count || 0);
+    const remainingCount = Number(
+      first.current_interval_remaining_count ||
+      first.current_interval_remains_count ||
+      first.current_interval_remain_count ||
+      first.remaining_count ||
+      first.remains_count ||
+      first.remaining ||
+      first.remains ||
+      first.left_count ||
+      null
+    );
+
+    // MiniMax commonly returns remaining prompts in current_interval_usage_count.
+    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount;
+    const explicitUsed = Number(
+      first.current_interval_used_count ||
+      first.used_count ||
+      first.used ||
+      null
+    );
+
+    let usedCount = explicitUsed;
+    if (usedCount === null && inferredRemainingCount !== null) {
+      usedCount = total - inferredRemainingCount;
+    }
+    if (usedCount === null) usedCount = 0;
+    if (usedCount < 0) usedCount = 0;
+    if (usedCount > total) usedCount = total;
+
+    const remaining = inferredRemainingCount !== null ? inferredRemainingCount : (total - usedCount);
+
+    // CN API returns model call counts (needs division by 15 for prompts)
+    // GLOBAL API returns prompt counts directly
+    const MODEL_CALLS_PER_PROMPT = 15;
+    const isCn = this.region === 'CN';
+    const multiplier = isCn ? 1 / MODEL_CALLS_PER_PROMPT : 1;
+
+    const finalUsed = Math.round(usedCount * multiplier);
+    const finalTotal = Math.round(total * multiplier);
+    const finalRemaining = Math.round(remaining * multiplier);
+
+    const remainingPercent = this.computeRemainingPercent(first, {
+      total: finalTotal,
+      used: finalUsed,
+      remaining: finalRemaining
+    });
 
     const planName = data?.current_subscribe_title || data?.plan_name || data?.plan || 'MiniMax';
     const endTime = first.end_time || first.remains_time || null;
-
-    let usedCount = used;
-    let totalCount = total;
-    if (totalCount <= 0 && remaining > 0) {
-      totalCount = used + remaining;
-    }
 
     return {
       accountId: 'minimax-local',
@@ -123,9 +161,9 @@ class LocalMinimaxService {
       source: 'local_auth',
       plan: `${planName} (${this.region})`,
       usage: {
-        used: usedCount,
-        total: totalCount,
-        remaining,
+        used: finalUsed,
+        total: finalTotal,
+        remaining: finalRemaining,
         remainingPercent,
         resetsAt: endTime
       },
@@ -164,6 +202,34 @@ class LocalMinimaxService {
       (remainingPercent > 0 ? 100 : 0) +
       total + used + remaining
     );
+  }
+
+  computeRemainingPercent(item, fallback = {}) {
+    const direct = Number(item?.current_interval_remaining_percent);
+    if (Number.isFinite(direct) && direct >= 0 && direct <= 100) {
+      return direct;
+    }
+
+    const total = Number(fallback.total || item?.current_interval_total_count || 0);
+    const used = Number(fallback.used || item?.current_interval_usage_count || 0);
+    const remaining = Number(fallback.remaining || item?.current_interval_remaining_count || item?.current_interval_remains_count || 0);
+
+    if (total > 0 && remaining > 0) {
+      return Math.max(0, Math.min(100, (remaining / total) * 100));
+    }
+
+    if (total > 0 && used >= 0) {
+      return Math.max(0, Math.min(100, 100 - (used / total) * 100));
+    }
+
+    if (used > 0 || remaining > 0) {
+      const sum = used + remaining;
+      if (sum > 0) {
+        return Math.max(0, Math.min(100, (remaining / sum) * 100));
+      }
+    }
+
+    return null;
   }
 }
 

@@ -15,6 +15,10 @@
     "minimax": {
       "name": "MiniMax",
       "currency": "USD"
+    },
+    "gemini": {
+      "name": "Gemini",
+      "currency": "USD"
     }
   },
   "accounts": [
@@ -41,6 +45,12 @@
       "provider": "minimax",
       "label": "MiniMax",
       "billingMode": "token_plan"
+    },
+    {
+      "id": "gemini-local",
+      "provider": "gemini",
+      "label": "Gemini",
+      "billingMode": "free_tier"
     }
   ]
 }
