@@ -42,6 +42,7 @@ const WINDOW_SIZES = {
 const WINDOW_MARGIN = 12;
 const DOCK_THRESHOLD = 28;
 const EDGE_PEEK = 44;
+const APP_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 
 function getTopCenterBounds(size) {
   const display = screen.getPrimaryDisplay();
@@ -206,6 +207,7 @@ function createIslandWindow() {
     closable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
+    icon: APP_ICON_PATH,
     backgroundColor: '#00000000',
     webPreferences: {
       nodeIntegration: true,
@@ -475,7 +477,7 @@ async function createApp() {
 
   createIslandWindow();
   trayController = createTray({
-    icon: nativeImage.createEmpty(),
+    icon: nativeImage.createFromPath(APP_ICON_PATH),
     onOpenDashboard: async () => {
       if (islandWindow) {
         islandWindow.showInactive();
