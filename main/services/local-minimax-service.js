@@ -97,41 +97,68 @@ class LocalMinimaxService {
     const remains = data?.model_remains || [];
     const first = this.pickPrimaryRemain(remains);
 
+    // Read raw field values. Field names are taken at face value: usage_count
+    // is USAGE (consumed), remaining_count is REMAINING, used_count is also USED.
+    // Don't trust undocumented "usage = remaining" semantics.
     const total = Number(first.current_interval_total_count || 0);
-    const usageFieldCount = Number(first.current_interval_usage_count || 0);
-    const remainingCount = Number(
-      first.current_interval_remaining_count ||
-      first.current_interval_remains_count ||
-      first.current_interval_remain_count ||
-      first.remaining_count ||
-      first.remains_count ||
-      first.remaining ||
-      first.remains ||
-      first.left_count ||
-      null
-    );
 
-    // MiniMax commonly returns remaining prompts in current_interval_usage_count.
-    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount;
-    const explicitUsed = Number(
-      first.current_interval_used_count ||
-      first.used_count ||
-      first.used ||
-      null
-    );
+    const remainingField = LocalMinimaxService.pickDefinedField(first, [
+      'current_interval_remaining_count',
+      'current_interval_remains_count',
+      'current_interval_remain_count',
+      'remaining_count',
+      'remains_count',
+      'remaining',
+      'remains',
+      'left_count'
+    ]);
+    const explicitUsedField = LocalMinimaxService.pickDefinedField(first, [
+      'current_interval_usage_count',
+      'current_interval_used_count',
+      'used_count',
+      'used'
+    ]);
 
-    let usedCount = explicitUsed;
-    if (usedCount === null && inferredRemainingCount !== null) {
-      usedCount = total - inferredRemainingCount;
+    const hasRemaining = remainingField !== null;
+    const hasUsed = explicitUsedField !== null;
+    const remainingRaw = hasRemaining ? Number(remainingField) : null;
+    const usedRaw = hasUsed ? Number(explicitUsedField) : null;
+
+    let usedCount;
+    let remaining;
+
+    if (hasRemaining && hasUsed) {
+      // Both present — use them; if sum doesn't match total, prefer explicit remaining.
+      usedCount = Math.max(0, usedRaw);
+      remaining = Math.max(0, remainingRaw);
+      if (total > 0 && Math.abs((usedCount + remaining) - total) > Math.max(1, total * 0.05)) {
+        // Self-inconsistent: recompute used from total - remaining.
+        usedCount = Math.max(0, total - remaining);
+        console.warn(
+          `[minimax] model "${first.model_name || '?'}": used+remaining (${usedCount + remaining}) != total (${total}); using total - remaining`
+        );
+      }
+    } else if (hasRemaining) {
+      remaining = Math.max(0, remainingRaw);
+      usedCount = Math.max(0, total - remaining);
+    } else if (hasUsed) {
+      usedCount = Math.max(0, usedRaw);
+      remaining = Math.max(0, total - usedCount);
+    } else {
+      usedCount = 0;
+      remaining = Math.max(0, total);
     }
-    if (usedCount === null) usedCount = 0;
-    if (usedCount < 0) usedCount = 0;
-    if (usedCount > total) usedCount = total;
 
-    const remaining = inferredRemainingCount !== null ? inferredRemainingCount : (total - usedCount);
+    if (total > 0) {
+      if (usedCount > total) usedCount = total;
+      if (remaining > total) remaining = total;
+    } else {
+      // total=0 means the API didn't return a cap; show used as-is without clamping to 0.
+      usedCount = Math.max(0, usedCount);
+      remaining = Math.max(0, remaining);
+    }
 
-    // CN API returns model call counts (needs division by 15 for prompts)
-    // GLOBAL API returns prompt counts directly
+    // CN API returns model call counts (÷15 for prompts); GLOBAL returns prompt counts.
     const MODEL_CALLS_PER_PROMPT = 15;
     const isCn = this.region === 'CN';
     const multiplier = isCn ? 1 / MODEL_CALLS_PER_PROMPT : 1;
@@ -145,6 +172,12 @@ class LocalMinimaxService {
       used: finalUsed,
       remaining: finalRemaining
     });
+
+    console.log(
+      `[minimax:${this.region}] model=${first.model_name || '?'} ` +
+      `raw_total=${total} raw_used=${usedCount} raw_remaining=${remaining} ` +
+      `→ final total=${finalTotal} used=${finalUsed} remaining=${finalRemaining} (${remainingPercent}%)`
+    );
 
     const planName = data?.current_subscribe_title || data?.plan_name || data?.plan || 'MiniMax';
     const endTime = first.end_time || first.remains_time || null;
@@ -183,6 +216,20 @@ class LocalMinimaxService {
     return remains
       .slice()
       .sort((left, right) => this.getRemainScore(right) - this.getRemainScore(left))[0] || {};
+  }
+
+  // Read the first field on `item` whose value is neither null nor undefined.
+  // Returns null if every field is missing — this lets callers distinguish
+  // "field not present" from "field is 0", which the `||` operator cannot.
+  static pickDefinedField(item, fieldNames) {
+    if (!item || typeof item !== 'object') return null;
+    for (const name of fieldNames) {
+      const value = item[name];
+      if (value !== null && value !== undefined) {
+        return value;
+      }
+    }
+    return null;
   }
 
   getRemainScore(item) {
