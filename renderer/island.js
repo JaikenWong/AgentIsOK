@@ -1,9 +1,11 @@
 const { ipcRenderer } = require('electron');
 
 const island = document.getElementById('island');
+const pillContent = document.getElementById('pillContent');
 const expandedContent = document.getElementById('expandedContent');
 const primaryLabel = document.getElementById('primaryLabel');
 const primaryValue = document.getElementById('primaryValue');
+const pillProgress = document.getElementById('pillProgress');
 const sessionsList = document.getElementById('sessionsList');
 const accountsList = document.getElementById('accountsList');
 const syncButton = document.getElementById('syncButton');
@@ -18,16 +20,31 @@ const approveButton = document.getElementById('approveButton');
 const approveAlwaysButton = document.getElementById('approveAlwaysButton');
 const denyButton = document.getElementById('denyButton');
 const providerToggles = document.getElementById('providerToggles');
+const approveShortcut = document.getElementById('approveShortcut');
+const alwaysShortcut = document.getElementById('alwaysShortcut');
+const denyShortcut = document.getElementById('denyShortcut');
 
 let currentData = null;
 let pendingIntervention = null;
 let providerVisibility = {};
+let dragging = false;
+let suppressClickUntil = 0;
+let dragPointerDown = null;
+let dragStarted = false;
+let heightSyncFrame = null;
+let lastExpandedHeight = 0;
+let pendingDragMove = null;
+let dragMoveFrame = null;
+let windowState = { mode: 'pill', dockEdge: null, hidden: false };
+const DRAG_THRESHOLD = 8;
 
 function expandIsland() {
     island.classList.remove('pill');
     island.classList.add('expanded');
     expandedContent.classList.remove('hidden');
     ipcRenderer.send('island:set-mode', 'expanded');
+    scheduleExpandedHeightSync();
+    setTimeout(scheduleExpandedHeightSync, 80);
 }
 
 function collapseIsland() {
@@ -35,6 +52,7 @@ function collapseIsland() {
         return;
     }
 
+    lastExpandedHeight = 0;
     island.classList.remove('expanded');
     island.classList.add('pill');
     expandedContent.classList.add('hidden');
@@ -42,6 +60,10 @@ function collapseIsland() {
 }
 
 island.addEventListener('click', (event) => {
+    if (dragging || Date.now() < suppressClickUntil) {
+        return;
+    }
+
     if (event.target.tagName === 'BUTTON') {
         return;
     }
@@ -51,6 +73,76 @@ island.addEventListener('click', (event) => {
     } else {
         collapseIsland();
     }
+});
+
+island.addEventListener('mouseenter', () => {
+    ipcRenderer.send('island:hover', true);
+});
+
+island.addEventListener('mouseleave', () => {
+    ipcRenderer.send('island:hover', false);
+});
+
+document.getElementById('pillContent').addEventListener('mousedown', (event) => {
+    if (!island.classList.contains('pill')) {
+        return;
+    }
+
+    dragPointerDown = { x: event.screenX, y: event.screenY };
+    dragStarted = false;
+});
+
+window.addEventListener('mousemove', (event) => {
+    if (!dragPointerDown) {
+        return;
+    }
+
+    const dx = event.screenX - dragPointerDown.x;
+    const dy = event.screenY - dragPointerDown.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (!dragStarted && distance >= DRAG_THRESHOLD) {
+        dragStarted = true;
+        dragging = true;
+        ipcRenderer.send('island:drag-start', dragPointerDown);
+    }
+
+    if (!dragStarted) {
+        return;
+    }
+
+    pendingDragMove = { x: event.screenX, y: event.screenY };
+    if (!dragMoveFrame) {
+        dragMoveFrame = requestAnimationFrame(() => {
+            dragMoveFrame = null;
+            if (pendingDragMove) {
+                ipcRenderer.send('island:drag-move', pendingDragMove);
+            }
+        });
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    if (!dragPointerDown) {
+        return;
+    }
+
+    if (dragStarted) {
+        dragging = false;
+        suppressClickUntil = Date.now() + 180;
+        if (dragMoveFrame) {
+            cancelAnimationFrame(dragMoveFrame);
+            dragMoveFrame = null;
+        }
+        if (pendingDragMove) {
+            ipcRenderer.send('island:drag-move', pendingDragMove);
+            pendingDragMove = null;
+        }
+        ipcRenderer.send('island:drag-end');
+    }
+
+    dragPointerDown = null;
+    dragStarted = false;
 });
 
 function formatUsd(value) {
@@ -99,20 +191,113 @@ function getTone(data) {
 
 function renderSummary(data) {
     currentData = data;
-    const codexAccount = data.accounts.find(a => a.id === 'codex-local');
-    if (codexAccount) {
-        primaryLabel.innerText = 'Codex Plan';
-        primaryValue.innerText = codexAccount.plan || 'Live';
+    const visibleAccounts = getPrioritizedVisibleAccounts(data.accounts || []);
+    const progressAccounts = visibleAccounts.filter(hasProgressRing).slice(0, 4);
+    const primaryAccount = visibleAccounts[0];
+
+    if (progressAccounts.length) {
+        primaryLabel.innerText = progressAccounts.length > 1 ? 'Providers' : (primaryAccount ? primaryAccount.label : 'Provider');
+        primaryValue.innerText = primaryAccount ? (primaryAccount.plan || 'Live') : 'Live';
+        renderPillProgress(progressAccounts);
+    } else if (primaryAccount) {
+        primaryLabel.innerText = primaryAccount.label || 'Provider';
+        primaryValue.innerText = primaryAccount.plan || 'Live';
+        hidePillProgress();
     } else {
-        primaryLabel.innerText = 'Codex Status';
+        primaryLabel.innerText = 'Status';
         primaryValue.innerText = 'Live';
+        hidePillProgress();
     }
     renderSessions(data.sessions || []);
-    renderAccounts(data.accounts || []);
+    renderAccounts(data.accounts || [], false);
     updateCompactVisibility();
 
     island.classList.remove('tone-neutral', 'tone-good', 'tone-warn', 'tone-danger');
     island.classList.add(getTone(data));
+}
+
+function renderPillProgress(accounts) {
+    if (!accounts.length) {
+        hidePillProgress();
+        return;
+    }
+
+    const displayAccounts = windowState.hidden ? accounts.slice(0, 1) : accounts.slice(0, 4);
+
+    pillProgress.classList.remove('hidden');
+    pillContent.classList.add('pillContent-rings');
+    pillContent.classList.toggle('pillContent-rings-hidden', windowState.hidden);
+    primaryLabel.classList.toggle('pillTextHidden', windowState.hidden);
+    primaryValue.classList.add('pillTextHidden');
+    pillProgress.innerHTML = displayAccounts.map((account) => {
+        const progressLine = getProgressLine(account);
+        const used = Number(progressLine.used || 0);
+        const limit = Number(progressLine.limit || 0);
+        const percent = Math.max(0, Math.min(100, limit > 0 ? (used / limit) * 100 : 0));
+        const radius = displayAccounts.length > 1 ? 12 : 19;
+        const size = displayAccounts.length > 1 ? 28 : 40;
+        const center = size / 2;
+        const circumference = 2 * Math.PI * radius;
+        const offset = circumference * (1 - percent / 100);
+        const label = getProviderShortLabel(account);
+
+        return `
+            <div class="pillRing">
+                <svg class="pillRingSvg" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+                    <circle class="pillProgressTrack" cx="${center}" cy="${center}" r="${radius}"></circle>
+                    <circle class="pillProgressFill" cx="${center}" cy="${center}" r="${radius}"
+                        style="stroke-dasharray:${circumference};stroke-dashoffset:${offset};"></circle>
+                </svg>
+                <span class="pillRingText">${escapeHtml(label)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function hidePillProgress() {
+    pillProgress.classList.add('hidden');
+    pillContent.classList.remove('pillContent-rings', 'pillContent-rings-right', 'pillContent-rings-hidden');
+    primaryLabel.classList.remove('pillTextHidden');
+    primaryValue.classList.remove('pillTextHidden');
+    pillProgress.innerHTML = '';
+}
+
+function hasProgressRing(account) {
+    return Boolean(getProgressLine(account));
+}
+
+function getProgressLine(account) {
+    return Array.isArray(account.lines)
+        ? account.lines.find((line) => line && line.type === 'progress' && Number(line.limit) > 0)
+        : null;
+}
+
+function getProviderShortLabel(account) {
+    const map = {
+        codex: 'C',
+        claude: 'A',
+        cursor: 'R',
+        minimax: 'M'
+    };
+    return map[account.provider] || String(account.label || '?').slice(0, 1).toUpperCase();
+}
+
+function getVisibleAccounts(accounts) {
+    const visibleProviders = Object.entries(providerVisibility)
+        .filter(([, info]) => info.visible)
+        .map(([key]) => key);
+
+    if (!visibleProviders.length) {
+        return accounts;
+    }
+
+    return accounts.filter((account) => visibleProviders.includes(account.provider));
+}
+
+function getPrioritizedVisibleAccounts(accounts) {
+    return getVisibleAccounts(accounts)
+        .slice()
+        .sort((left, right) => getAccountPriority(left) - getAccountPriority(right));
 }
 
 function renderAccountCard(account) {
@@ -133,6 +318,10 @@ function renderAccountCard(account) {
 }
 
 function renderAccountHeadline(account) {
+    if (account.meta && account.meta.manualPlan) {
+        return account.meta.manualPlan;
+    }
+
     if (account.status === 'stale') {
         return 'Stale';
     }
@@ -230,6 +419,7 @@ function renderIntervention(intervention) {
     if (!intervention) {
         interventionPanel.classList.add('hidden');
         updateCompactVisibility();
+        scheduleExpandedHeightSync();
         if (currentData) {
             island.classList.remove('tone-neutral', 'tone-good', 'tone-warn', 'tone-danger');
             island.classList.add(getTone(currentData));
@@ -249,6 +439,7 @@ function renderIntervention(intervention) {
     island.classList.remove('tone-neutral', 'tone-good', 'tone-warn', 'tone-danger');
     island.classList.add('tone-danger');
     expandIsland();
+    scheduleExpandedHeightSync();
 }
 
 function formatSource(source) {
@@ -346,6 +537,33 @@ function updateCompactVisibility() {
     syncButton.classList.toggle('compactHidden', compact);
 }
 
+function scheduleExpandedHeightSync() {
+    if (!island.classList.contains('expanded')) {
+        return;
+    }
+
+    if (heightSyncFrame) {
+        cancelAnimationFrame(heightSyncFrame);
+    }
+
+    heightSyncFrame = requestAnimationFrame(() => {
+        heightSyncFrame = null;
+        const islandStyle = window.getComputedStyle(island);
+        const topPadding = Number.parseFloat(islandStyle.paddingTop) || 0;
+        const bottomPadding = Number.parseFloat(islandStyle.paddingBottom) || 0;
+        const gap = Number.parseFloat(islandStyle.gap) || 0;
+        const headerHeight = pillContent.offsetHeight || 0;
+        const contentHeight = expandedContent.scrollHeight || expandedContent.offsetHeight || 0;
+        const desiredHeight = Math.ceil(topPadding + headerHeight + gap + contentHeight + bottomPadding + 2);
+        if (Math.abs(desiredHeight - lastExpandedHeight) < 6) {
+            return;
+        }
+
+        lastExpandedHeight = desiredHeight;
+        ipcRenderer.send('island:set-expanded-height', desiredHeight);
+    });
+}
+
 function applySourceTheme(source) {
     interventionPanel.classList.remove('source-claude', 'source-codex', 'source-agent');
 
@@ -374,6 +592,15 @@ ipcRenderer.on('intervention-state', (_event, intervention) => {
     renderIntervention(intervention);
 });
 
+ipcRenderer.on('island-window-state', (_event, nextState) => {
+    const previousHidden = windowState.hidden;
+    const previousDockEdge = windowState.dockEdge;
+    windowState = nextState || windowState;
+    if (currentData && (previousHidden !== windowState.hidden || previousDockEdge !== windowState.dockEdge)) {
+        renderSummary(currentData);
+    }
+});
+
 syncButton.addEventListener('click', async () => {
     syncButton.disabled = true;
     try {
@@ -395,6 +622,36 @@ approveAlwaysButton.addEventListener('click', () => {
 denyButton.addEventListener('click', () => {
     ipcRenderer.send('intervention:respond', 'deny');
 });
+
+window.addEventListener('keydown', (event) => {
+    if (!pendingIntervention) {
+        return;
+    }
+
+    const modifierPressed = event.ctrlKey || event.metaKey;
+    if (!modifierPressed || !event.altKey) {
+        return;
+    }
+
+    const key = event.key.toLowerCase();
+    if (key === 'a') {
+        ipcRenderer.send('intervention:respond', 'approve');
+        event.preventDefault();
+    } else if (key === 'l') {
+        ipcRenderer.send('intervention:respond', 'approve_always');
+        event.preventDefault();
+    } else if (key === 'd') {
+        ipcRenderer.send('intervention:respond', 'deny');
+        event.preventDefault();
+    }
+});
+
+function renderShortcuts() {
+    const prefix = process.platform === 'darwin' ? '⌘⌥' : 'Ctrl Alt';
+    approveShortcut.innerText = `${prefix} A`;
+    alwaysShortcut.innerText = `${prefix} L`;
+    denyShortcut.innerText = `${prefix} D`;
+}
 
 function renderProviderToggles() {
     const providers = Object.entries(providerVisibility);
@@ -422,42 +679,44 @@ function renderProviderToggles() {
                 providerVisibility[provider].visible = newVisible;
                 ipcRenderer.send('providers:set-visibility', provider, newVisible);
                 renderProviderToggles();
-                renderAccounts(currentData?.accounts || []);
+                if (currentData) {
+                    renderSummary(currentData);
+                } else {
+                    renderAccounts([], false);
+                }
+                scheduleExpandedHeightSync();
             }
         });
     });
 }
 
-function renderAccounts(accounts) {
+function renderAccounts(accounts, syncHeight = true) {
     if (!accounts.length) {
         accountsList.innerHTML = '';
         return;
     }
 
-    const visibleProviders = Object.entries(providerVisibility)
-        .filter(([, info]) => info.visible)
-        .map(([key]) => key);
-
-    const visibleAccounts = accounts.filter(
-        (account) => visibleProviders.includes(account.provider)
-    );
+    const visibleAccounts = getPrioritizedVisibleAccounts(accounts);
 
     if (!visibleAccounts.length) {
         accountsList.innerHTML = '<div style="font-size:10px;opacity:0.4;text-align:center;padding:4px;">All providers hidden</div>';
         return;
     }
 
-    const prioritizedAccounts = [...visibleAccounts].sort((left, right) => getAccountPriority(left) - getAccountPriority(right));
-
-    accountsList.innerHTML = prioritizedAccounts
-        .slice(0, 3)
+    accountsList.innerHTML = visibleAccounts
         .map((account) => renderAccountCard(account))
         .join('');
+    if (syncHeight) {
+        scheduleExpandedHeightSync();
+    }
 }
 
 async function loadProviderVisibility() {
     providerVisibility = await ipcRenderer.invoke('providers:get-visibility');
     renderProviderToggles();
+    if (currentData) {
+        renderSummary(currentData);
+    }
 }
 
 Promise.all([
@@ -465,6 +724,7 @@ Promise.all([
     ipcRenderer.invoke('island:get-intervention'),
     loadProviderVisibility()
 ]).then(([data, intervention]) => {
+    renderShortcuts();
     renderSummary(data);
     renderIntervention(intervention);
 });

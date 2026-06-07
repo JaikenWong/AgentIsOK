@@ -38,13 +38,22 @@ class LocalMinimaxProvider {
         format: { kind: 'count', suffix: 'prompts' },
         resetsAt: usage.resetsAt
       });
-    } else if (usage.remainingPercent !== undefined && usage.remainingPercent > 0) {
+    } else if (Number.isFinite(Number(usage.remainingPercent))) {
       lines.push({
         type: 'progress',
         label: 'Session',
         used: 100 - usage.remainingPercent,
         limit: 100,
         format: { kind: 'percent' },
+        resetsAt: usage.resetsAt
+      });
+    } else if (Number.isFinite(Number(usage.remaining)) && usage.remaining > 0) {
+      lines.push({
+        type: 'progress',
+        label: 'Session',
+        used: 0,
+        limit: usage.remaining,
+        format: { kind: 'count', suffix: 'prompts' },
         resetsAt: usage.resetsAt
       });
     }

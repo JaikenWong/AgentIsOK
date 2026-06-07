@@ -13,10 +13,12 @@ body, html {
     justify-content: center;
     padding-top: 0;
     width: 100%;
+    height: 100%;
 }
 
 #island {
     width: 100%;
+    box-sizing: border-box;
     color: white;
     border-radius: 24px;
     display: flex;
@@ -32,12 +34,20 @@ body, html {
 }
 
 #island.pill {
+    height: 56px;
     min-height: 56px;
+    box-sizing: border-box;
+    gap: 0;
+    padding: 6px 14px;
+    border-radius: 18px;
 }
 
 #island.expanded {
-    border-radius: 20px;
+    height: 100%;
+    border-radius: 18px 18px 20px 20px;
     padding-bottom: 12px;
+    max-height: 100vh;
+    overflow: hidden;
 }
 
 #pillContent {
@@ -47,24 +57,130 @@ body, html {
     gap: 14px;
     font-size: 12px;
     padding: 4px 0;
+    cursor: grab;
+}
+
+#island.pill #pillContent {
+    padding: 0;
+    min-height: 0;
+    height: 100%;
+}
+
+#pillContent.pillContent-rings {
+    justify-content: space-between;
+    gap: 10px;
+}
+
+#pillContent.pillContent-rings.pillContent-rings-hidden {
+    justify-content: center;
+}
+
+#pillContent:active {
+    cursor: grabbing;
+}
+
+.pillProgressGroup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    height: 100%;
+    min-height: 0;
+}
+
+.pillRing {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+}
+
+.pillRing:first-child:last-child {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+}
+
+.pillRingSvg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.pillProgressTrack,
+.pillProgressFill {
+    fill: none;
+    stroke-width: 3;
+}
+
+.pillProgressTrack {
+    stroke: rgba(255, 255, 255, 0.14);
+}
+
+.pillProgressFill {
+    stroke: rgba(92, 225, 160, 0.95);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.18s ease;
+}
+
+.pillRingText {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.pillRing:first-child:last-child .pillRingText {
+    font-size: 11px;
 }
 
 #primaryLabel {
     font-weight: 600;
     opacity: 0.72;
     letter-spacing: 0.02em;
+    transition: opacity 0.14s ease, max-width 0.14s ease, margin 0.14s ease;
+}
+
+#island.pill #primaryLabel {
+    display: flex;
+    align-items: center;
+    height: 100%;
 }
 
 #primaryValue {
     font-size: 20px;
     font-weight: 700;
+    transition: opacity 0.14s ease, max-width 0.14s ease, margin 0.14s ease;
+}
+
+.pillTextHidden {
+    opacity: 0;
+    max-width: 0;
+    margin: 0;
+    overflow: hidden;
 }
 
 #expandedContent {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
     -webkit-app-region: no-drag;
+    overflow-y: auto;
+    padding-right: 2px;
+    padding-bottom: 6px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+#expandedContent::-webkit-scrollbar {
+    display: none;
 }
 
 .hidden {
@@ -95,6 +211,7 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    flex: 0 0 auto;
     padding-top: 2px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -103,6 +220,7 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    flex: 0 0 auto;
     padding-top: 2px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -238,7 +356,9 @@ body, html {
 .actions {
     display: flex;
     justify-content: flex-end;
+    flex: 0 0 auto;
     padding-top: 2px;
+    padding-bottom: 2px;
 }
 
 .intervention {

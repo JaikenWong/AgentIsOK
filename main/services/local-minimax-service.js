@@ -6,6 +6,7 @@ class LocalMinimaxService {
   constructor() {
     this.region = null;
     this.apiKey = null;
+    this.baseUrl = null;
   }
 
   async fetchSnapshot() {
@@ -16,6 +17,7 @@ class LocalMinimaxService {
 
     this.apiKey = keyInfo.key;
     this.region = keyInfo.region;
+    this.baseUrl = keyInfo.baseUrl;
 
     try {
       const data = await this.fetchUsage();
@@ -36,30 +38,47 @@ class LocalMinimaxService {
   findApiKey() {
     const cnKey = process.env.MINIMAX_CN_API_KEY;
     const globalKey = process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN;
+    const customBaseUrl = process.env.MINIMAX_BASE_URL || process.env.MINIMAX_API_HOST;
 
     if (cnKey) {
-      return { key: cnKey, region: 'CN' };
+      return {
+        key: cnKey,
+        region: 'CN',
+        baseUrl: customBaseUrl || 'https://api.minimaxi.com'
+      };
     }
     if (globalKey) {
-      return { key: globalKey, region: 'GLOBAL' };
+      return {
+        key: globalKey,
+        region: 'GLOBAL',
+        baseUrl: customBaseUrl || 'https://www.minimax.io'
+      };
     }
 
-    try {
-      const { execSync } = require('child_process');
-      const key = execSync(
-        'security find-generic-password -s minimax-api-key -w 2>/dev/null',
-        { encoding: 'utf8', timeout: 5000 }
-      ).trim();
-      if (key) return { key, region: 'GLOBAL' };
-    } catch (e) {}
+    if (process.platform === 'darwin') {
+      try {
+        const { execSync } = require('child_process');
+        const key = execSync(
+          'security find-generic-password -s minimax-api-key -w 2>/dev/null',
+          { encoding: 'utf8', timeout: 5000 }
+        ).trim();
+        if (key) {
+          return {
+            key,
+            region: 'GLOBAL',
+            baseUrl: customBaseUrl || 'https://www.minimax.io'
+          };
+        }
+      } catch (e) {}
+    }
 
     return null;
   }
 
   async fetchUsage() {
-    const baseUrl = this.region === 'CN'
+    const baseUrl = this.baseUrl || (this.region === 'CN'
       ? 'https://api.minimaxi.com'
-      : 'https://www.minimax.io';
+      : 'https://www.minimax.io');
 
     const res = await fetch(`${baseUrl}/v1/token_plan/remains`, {
       method: 'GET',
@@ -76,7 +95,7 @@ class LocalMinimaxService {
 
   buildSnapshot(data) {
     const remains = data?.model_remains || [];
-    const first = remains[0] || {};
+    const first = this.pickPrimaryRemain(remains);
 
     const total = Number(first.current_interval_total_count || 0);
     const used = Number(first.current_interval_usage_count || 0);
@@ -112,9 +131,39 @@ class LocalMinimaxService {
       },
       meta: {
         region: this.region,
+        baseUrl: this.baseUrl,
         modelRemains: remains
       }
     };
+  }
+
+  pickPrimaryRemain(remains) {
+    if (!Array.isArray(remains) || !remains.length) {
+      return {};
+    }
+
+    return remains
+      .slice()
+      .sort((left, right) => this.getRemainScore(right) - this.getRemainScore(left))[0] || {};
+  }
+
+  getRemainScore(item) {
+    if (!item || typeof item !== 'object') {
+      return 0;
+    }
+
+    const total = Number(item.current_interval_total_count || 0);
+    const used = Number(item.current_interval_usage_count || 0);
+    const remaining = Number(item.current_interval_remaining_count || item.current_interval_remains_count || 0);
+    const remainingPercent = Number(item.current_interval_remaining_percent || 0);
+
+    return (
+      (total > 0 ? 1000 : 0) +
+      (used > 0 ? 400 : 0) +
+      (remaining > 0 ? 200 : 0) +
+      (remainingPercent > 0 ? 100 : 0) +
+      total + used + remaining
+    );
   }
 }
 

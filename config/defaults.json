@@ -7,7 +7,8 @@
   "providers": {
     "codex": {
       "visible": true,
-      "label": "Codex"
+      "label": "Codex",
+      "manualPlan": "Plus"
     },
     "claude": {
       "visible": false,
@@ -18,7 +19,7 @@
       "label": "Cursor"
     },
     "minimax": {
-      "visible": false,
+      "visible": true,
       "label": "MiniMax"
     }
   }

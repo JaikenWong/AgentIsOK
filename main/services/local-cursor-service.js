@@ -4,24 +4,9 @@ const os = require('os');
 
 class LocalCursorService {
   constructor() {
-    this.dbPath = path.join(
-      os.homedir(),
-      'Library',
-      'Application Support',
-      'Cursor',
-      'User',
-      'globalStorage',
-      'state.vscdb'
-    );
-    this.authPath = path.join(
-      os.homedir(),
-      'Library',
-      'Application Support',
-      'Cursor',
-      'User',
-      'globalStorage',
-      'cursorAuth'
-    );
+    const storageDir = this.getCursorGlobalStorageDir();
+    this.dbPath = path.join(storageDir, 'state.vscdb');
+    this.authPath = path.join(storageDir, 'cursorAuth');
   }
 
   async fetchSnapshot() {
@@ -48,6 +33,11 @@ class LocalCursorService {
   }
 
   readToken() {
+    const envToken = process.env.CURSOR_ACCESS_TOKEN || process.env.CURSOR_API_TOKEN;
+    if (envToken) {
+      return envToken;
+    }
+
     try {
       if (fs.existsSync(this.dbPath)) {
         const { execSync } = require('child_process');
@@ -59,16 +49,47 @@ class LocalCursorService {
       }
     } catch (e) {}
 
-    try {
-      const { execSync } = require('child_process');
-      const result = execSync(
-        'security find-generic-password -s cursor-access-token -w 2>/dev/null',
-        { encoding: 'utf8', timeout: 5000 }
-      ).trim();
-      if (result) return result;
-    } catch (e) {}
+    if (process.platform === 'darwin') {
+      try {
+        const { execSync } = require('child_process');
+        const result = execSync(
+          'security find-generic-password -s cursor-access-token -w 2>/dev/null',
+          { encoding: 'utf8', timeout: 5000 }
+        ).trim();
+        if (result) return result;
+      } catch (e) {}
+    }
 
     return null;
+  }
+
+  getCursorGlobalStorageDir() {
+    if (process.platform === 'win32') {
+      return path.join(
+        process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+        'Cursor',
+        'User',
+        'globalStorage'
+      );
+    }
+
+    if (process.platform === 'darwin') {
+      return path.join(
+        os.homedir(),
+        'Library',
+        'Application Support',
+        'Cursor',
+        'User',
+        'globalStorage'
+      );
+    }
+
+    return path.join(
+      process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'),
+      'Cursor',
+      'User',
+      'globalStorage'
+    );
   }
 
   async fetchUsage(token) {

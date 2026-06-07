@@ -1,8 +1,9 @@
 const LocalCodexService = require('../services/local-codex-service');
 
 class LocalCodexProvider {
-  constructor(account) {
+  constructor(account, defaultsConfig = {}) {
     this.account = account;
+    this.defaultsConfig = defaultsConfig;
     this.service = new LocalCodexService();
   }
 
@@ -12,13 +13,21 @@ class LocalCodexProvider {
       return null;
     }
 
+    const providerDefaults = (this.defaultsConfig.providers && this.defaultsConfig.providers.codex) || {};
+    const manualPlan = providerDefaults.manualPlan ? String(providerDefaults.manualPlan).trim() : '';
+    const effectivePlan = manualPlan || snapshot.plan || 'ChatGPT login';
+
     return {
       ...snapshot,
       accountId: this.account.id,
       provider: this.account.provider,
       label: this.account.label,
-      plan: snapshot.plan || 'ChatGPT login',
-      lines: this.buildLines(snapshot)
+      plan: effectivePlan,
+      meta: {
+        ...(snapshot.meta || {}),
+        manualPlan: manualPlan || null
+      },
+      lines: this.buildLines(snapshot, { manualPlan, effectivePlan })
     };
   }
 
@@ -26,20 +35,35 @@ class LocalCodexProvider {
     return [];
   }
 
-  buildLines(snapshot) {
+  buildLines(snapshot, options = {}) {
     const lines = [];
-    const planType = snapshot.plan || 'ChatGPT login';
+    const planType = options.effectivePlan || snapshot.plan || 'ChatGPT login';
     const lastRefresh = snapshot.meta && snapshot.meta.lastRefresh ? this.formatLastRefresh(snapshot.meta.lastRefresh) : null;
     const stale = snapshot.status === 'stale' || (snapshot.meta && snapshot.meta.isStale);
+    const subtitleBits = [];
+
+    if (options.manualPlan) {
+      subtitleBits.push('manual');
+    }
+    if (lastRefresh) {
+      subtitleBits.push(`cached ${lastRefresh}`);
+    }
 
     if (stale) {
       lines.push({
         type: 'text',
         label: 'Status',
         value: 'Refresh needed',
-        subtitle: lastRefresh ? `cached ${lastRefresh}` : 'Usage in Codex dashboard'
+        subtitle: subtitleBits.join(' · ') || 'Usage in Codex dashboard'
       });
     }
+
+    lines.unshift({
+      type: 'text',
+      label: 'Plan',
+      value: planType,
+      subtitle: options.manualPlan ? 'manual override' : 'local auth'
+    });
 
     if (snapshot.usage) {
       const usage = snapshot.usage;
@@ -48,33 +72,39 @@ class LocalCodexProvider {
       if (rateLimit) {
         if (rateLimit.primary_window && rateLimit.primary_window.used_percent !== undefined) {
           const resetAt = rateLimit.primary_window.reset_at;
+          const remainingPercent = Math.max(0, 100 - Number(rateLimit.primary_window.used_percent || 0));
           lines.push({
             type: 'progress',
             label: 'Session',
-            used: rateLimit.primary_window.used_percent,
+            used: remainingPercent,
             limit: 100,
             format: { kind: 'percent' },
-            subtitle: resetAt ? `Resets at ${new Date(resetAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : null
+            subtitle: resetAt
+              ? `${Math.round(remainingPercent)}% left · resets ${new Date(resetAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : `${Math.round(remainingPercent)}% left`
           });
         }
         if (rateLimit.secondary_window && rateLimit.secondary_window.used_percent !== undefined) {
+          const remainingPercent = Math.max(0, 100 - Number(rateLimit.secondary_window.used_percent || 0));
           lines.push({
             type: 'progress',
             label: 'Weekly',
-            used: rateLimit.secondary_window.used_percent,
+            used: remainingPercent,
             limit: 100,
-            format: { kind: 'percent' }
+            format: { kind: 'percent' },
+            subtitle: `${Math.round(remainingPercent)}% left`
           });
         }
       }
 
-      if (usage.credits && usage.credits.balance !== undefined) {
+      if (usage.credits && usage.credits.balance !== undefined && usage.credits.total !== undefined) {
         const remaining = usage.credits.balance;
-        const total = 1000; // Assuming 1000 as a standard limit or just showing remaining
+        const total = Number(usage.credits.total || 0);
+        const used = Math.max(0, total - remaining);
         lines.push({
           type: 'progress',
           label: 'Credits',
-          used: Math.max(0, total - remaining),
+          used,
           limit: total,
           format: { kind: 'count', suffix: 'credits' },
           subtitle: `${remaining} remaining`

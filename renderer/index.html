@@ -10,6 +10,7 @@
             <div id="pillContent">
                 <span id="primaryLabel">ThatIsOk</span>
                 <span id="primaryValue">Live</span>
+                <div id="pillProgress" class="pillProgressGroup hidden"></div>
             </div>
             <div id="expandedContent" class="hidden">
                 <div id="interventionPanel" class="intervention hidden">
@@ -22,9 +23,11 @@
                     <pre id="interventionCommand" class="interventionCommand hidden"></pre>
                     <div id="interventionMeta" class="interventionMeta hidden"></div>
                     <div class="interventionHint">
-                        <span class="hintKey">&#8984;Shift A</span> Approve
+                        <span id="approveShortcut" class="hintKey">Ctrl Alt A</span> Approve
                         <span class="hintSep">|</span>
-                        <span class="hintKey">&#8984;Shift D</span> Deny
+                        <span id="alwaysShortcut" class="hintKey">Ctrl Alt L</span> Always
+                        <span class="hintSep">|</span>
+                        <span id="denyShortcut" class="hintKey">Ctrl Alt D</span> Deny
                     </div>
                     <div class="interventionActions">
                         <button id="approveButton" class="btn approve">Approve</button>

@@ -19,7 +19,50 @@ const CODEX_HOOK_EVENTS = [
     'Stop'
 ];
 
+const CLAUDE_VALID_HOOK_EVENTS = new Set([
+    'PreToolUse',
+    'PostToolUse',
+    'PostToolUseFailure',
+    'PostToolBatch',
+    'Notification',
+    'UserPromptSubmit',
+    'UserPromptExpansion',
+    'SessionStart',
+    'SessionEnd',
+    'Stop',
+    'StopFailure',
+    'SubagentStart',
+    'SubagentStop',
+    'PreCompact',
+    'PostCompact',
+    'PermissionRequest',
+    'PermissionDenied',
+    'Setup',
+    'TeammateIdle',
+    'TaskCreated',
+    'TaskCompleted',
+    'Elicitation',
+    'ElicitationResult',
+    'ConfigChange',
+    'WorktreeCreate',
+    'WorktreeRemove',
+    'InstructionsLoaded',
+    'CwdChanged',
+    'FileChanged',
+    'MessageDisplay'
+]);
+
+const MANAGED_KEY = 'ThatIsOk';
+
 class ConfigInjector {
+    static appPath = process.cwd();
+
+    static setAppPath(appPath) {
+        if (appPath) {
+            this.appPath = appPath;
+        }
+    }
+
     static injectClaude() {
         const configPath = path.join(os.homedir(), '.claude', 'settings.json');
 
@@ -31,10 +74,10 @@ class ConfigInjector {
         try {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
             config.hooks = config.hooks || {};
+            this.cleanClaudeLegacyConfig(config);
 
             for (const eventName of CLAUDE_HOOK_EVENTS) {
-                const existing = config.hooks[eventName] || [];
-                const managedKey = 'ThatIsOk';
+                const existing = Array.isArray(config.hooks[eventName]) ? config.hooks[eventName] : [];
                 const managedEntry = {
                     matcher: '*',
                     hooks: [
@@ -44,11 +87,11 @@ class ConfigInjector {
                             timeout: eventName === 'PermissionRequest' ? 86400 : 10
                         }
                     ],
-                    _managedBy: managedKey
+                    _managedBy: MANAGED_KEY
                 };
 
                 const filtered = existing.filter(
-                    (entry) => entry && entry._managedBy !== managedKey
+                    (entry) => entry && entry._managedBy !== MANAGED_KEY
                 );
                 config.hooks[eventName] = [...filtered, managedEntry];
             }
@@ -71,7 +114,7 @@ class ConfigInjector {
             config.hooks = config.hooks || {};
 
             for (const eventName of CODEX_HOOK_EVENTS) {
-                const existing = config.hooks[eventName] || [];
+                const existing = Array.isArray(config.hooks[eventName]) ? config.hooks[eventName] : [];
                 const managedKey = 'ThatIsOk';
                 const managedEntry = {
                     hooks: [
@@ -112,7 +155,7 @@ class ConfigInjector {
             }
 
             for (const eventName of CLAUDE_HOOK_EVENTS) {
-                if (config.hooks[eventName]) {
+                if (Array.isArray(config.hooks[eventName])) {
                     config.hooks[eventName] = config.hooks[eventName].filter(
                         (entry) => entry && entry._managedBy !== 'ThatIsOk'
                     );
@@ -129,6 +172,55 @@ class ConfigInjector {
         }
     }
 
+    static cleanClaudeLegacyConfig(config) {
+        if (config.hooks) {
+            for (const eventName of Object.keys(config.hooks)) {
+                if (!CLAUDE_VALID_HOOK_EVENTS.has(eventName) && this.isManagedClaudeHookValue(config.hooks[eventName])) {
+                    delete config.hooks[eventName];
+                }
+            }
+        }
+
+        if (config.statusLine && this.isManagedCommand(config.statusLine.command)) {
+            delete config.statusLine;
+        }
+    }
+
+    static isManagedClaudeHookValue(value) {
+        if (!value) {
+            return false;
+        }
+
+        if (typeof value === 'string') {
+            return this.isManagedCommand(value);
+        }
+
+        if (Array.isArray(value)) {
+            return value.some((entry) => this.isManagedClaudeHookValue(entry));
+        }
+
+        if (typeof value === 'object') {
+            if (value._managedBy === MANAGED_KEY) {
+                return true;
+            }
+
+            if (this.isManagedCommand(value.command)) {
+                return true;
+            }
+
+            if (Array.isArray(value.hooks)) {
+                return value.hooks.some((hook) => this.isManagedClaudeHookValue(hook));
+            }
+        }
+
+        return false;
+    }
+
+    static isManagedCommand(command) {
+        return typeof command === 'string'
+            && (command.includes('ThatIsOk') || command.includes('hook-bridge.js'));
+    }
+
     static uninjectCodex() {
         const hooksPath = path.join(os.homedir(), '.codex', 'hooks.json');
 
@@ -143,7 +235,7 @@ class ConfigInjector {
             }
 
             for (const eventName of CODEX_HOOK_EVENTS) {
-                if (config.hooks[eventName]) {
+                if (Array.isArray(config.hooks[eventName])) {
                     config.hooks[eventName] = config.hooks[eventName].filter(
                         (entry) => entry && entry._managedBy !== 'ThatIsOk'
                     );
@@ -201,7 +293,7 @@ class ConfigInjector {
     }
 
     static buildBridgeCommand(source, eventName) {
-        const bridgePath = path.join(process.cwd(), 'bridge', 'hook-bridge.js');
+        const bridgePath = path.join(this.appPath, 'bridge', 'hook-bridge.js');
         if (process.platform === 'win32') {
             const escaped = bridgePath.replace(/"/g, '\\"');
             return `cmd /d /s /c "node \\"${escaped}\\" --source ${source} --event ${eventName}"`;

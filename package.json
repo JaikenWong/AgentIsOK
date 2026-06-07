@@ -1,6 +1,6 @@
 {
   "name": "thatisok",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI agent cost + approval cockpit for Claude Code, Codex, Cursor, MiniMax",
   "main": "main/index.js",
   "bin": {
@@ -27,16 +27,24 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
-      ],
-      "icon": "assets/icon.ico"
+      ]
     },
     "mac": {
       "target": [
         "dmg"
-      ],
-      "icon": "assets/icon.icns"
+      ]
     },
     "files": [
       "main/**/*",
@@ -60,9 +68,6 @@
     "electron-rebuild": "^3.2.9",
     "electron-store": "^11.0.2",
     "node-notifier": "^10.0.1"
-  },
-  "dependencies": {
-    "node-pty": "^1.1.0"
   },
   "allowScripts": {
     "node-pty@1.1.0": true
