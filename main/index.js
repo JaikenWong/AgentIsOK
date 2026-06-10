@@ -34,8 +34,7 @@ let islandState = {
   expandedHeight: 404,
   dragStartBounds: null,
   dragStartMouse: null,
-  lastDragBounds: null,
-  dragWorkArea: null
+  lastDragBounds: null
 };
 
 const WINDOW_SIZES = {
@@ -213,7 +212,6 @@ function startIslandDrag(mouse) {
 
   islandState.dragStartBounds = islandWindow.getBounds();
   islandState.dragStartMouse = mouse;
-  islandState.dragWorkArea = getWorkArea();
 }
 
 function moveIslandDrag(mouse) {
@@ -223,21 +221,26 @@ function moveIslandDrag(mouse) {
 
   const dx = mouse.x - islandState.dragStartMouse.x;
   const dy = mouse.y - islandState.dragStartMouse.y;
+  
+  const display = screen.getDisplayNearestPoint(mouse);
   const nextBounds = clampBounds({
     ...islandState.dragStartBounds,
     x: islandState.dragStartBounds.x + dx,
     y: islandState.dragStartBounds.y + dy
   }, {
-    workArea: islandState.dragWorkArea
+    workArea: display.workArea
   });
 
+  const roundedX = Math.round(nextBounds.x);
+  const roundedY = Math.round(nextBounds.y);
   const previous = islandState.lastDragBounds;
-  if (previous && Math.abs(previous.x - nextBounds.x) < 2 && Math.abs(previous.y - nextBounds.y) < 2) {
+
+  if (previous && previous.x === roundedX && previous.y === roundedY) {
     return;
   }
 
-  islandState.lastDragBounds = nextBounds;
-  applyDragPosition(nextBounds);
+  islandState.lastDragBounds = { x: roundedX, y: roundedY };
+  islandWindow.setPosition(roundedX, roundedY, false);
 }
 
 function endIslandDrag() {
@@ -245,13 +248,14 @@ function endIslandDrag() {
     return;
   }
 
+  const current = islandWindow.getBounds();
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+
   islandState.dragStartBounds = null;
   islandState.dragStartMouse = null;
   islandState.lastDragBounds = null;
-  islandState.dragWorkArea = null;
 
-  const current = islandWindow.getBounds();
-  applyIslandBounds(clampBounds(current));
+  applyIslandBounds(clampBounds(current, { workArea: display.workArea }));
 }
 
 function setupIPC() {
