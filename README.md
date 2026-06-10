@@ -64,9 +64,12 @@ On first run, `ConfigInjector` writes hooks into `~/.claude/settings.json` and `
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+Shift+Space` | Toggle island visibility |
-| `Cmd+Shift+A` | Approve current permission request |
-| `Cmd+Shift+D` | Deny current permission request |
+| `Cmd/Ctrl+Shift+Space` | Toggle island visibility |
+| `Cmd/Ctrl+Shift+A` | Approve current permission request |
+| `Cmd/Ctrl+Shift+L` | Approve always (auto-approve same requests) |
+| `Cmd/Ctrl+Shift+D` | Deny current permission request |
+
+> Shortcuts work on both macOS and Windows (Electron's `CommandOrControl`)
 
 ## Local HTTP API
 
@@ -81,6 +84,10 @@ Usage data is available at `http://127.0.0.1:45874`:
 | `GET /api/intervention` | Current pending permission request |
 
 ## OpenCode Plugin
+
+OpenCode 是一个 AI 代码编辑器插件，ThatIsOk 提供插件形式的 Hook Bridge 支持。
+
+安装后，OpenCode 的所有 hook 事件（SessionStart/Stop、PreToolUse、PermissionRequest 等）会通过插件发送到 ThatIsOk 的 IPC bridge，实现统一的权限审批和用量追踪。
 
 Install the OpenCode plugin:
 
