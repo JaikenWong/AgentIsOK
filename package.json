@@ -45,6 +45,7 @@
       "shortcutName": "ThatIsOk"
     },
     "mac": {
+      "icon": "assets/icon.icns",
       "target": [
         "dmg"
       ]

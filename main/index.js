@@ -44,6 +44,7 @@ const WINDOW_SIZES = {
 
 const WINDOW_MARGIN = 12;
 const APP_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
+const TRAY_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon-16.png');
 
 function getTopCenterBounds(size) {
   const display = screen.getPrimaryDisplay();
@@ -388,7 +389,7 @@ async function createApp() {
 
   createIslandWindow();
   trayController = createTray({
-    icon: nativeImage.createFromPath(APP_ICON_PATH),
+    icon: nativeImage.createFromPath(TRAY_ICON_PATH),
     onOpenDashboard: async () => {
       if (islandWindow) {
         islandWindow.showInactive();
@@ -400,7 +401,7 @@ async function createApp() {
     onRefresh: syncNow,
     onQuit: () => {
       app.isQuiting = true;
-      app.quit();
+      app.exit(0);
     }
   });
 
