@@ -6,7 +6,7 @@
   },
   "providers": {
     "codex": {
-      "visible": true,
+      "visible": false,
       "label": "Codex",
       "manualPlan": "Plus"
     },

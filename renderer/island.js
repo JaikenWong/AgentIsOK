@@ -24,6 +24,15 @@ const approveShortcut = document.getElementById('approveShortcut');
 const alwaysShortcut = document.getElementById('alwaysShortcut');
 const denyShortcut = document.getElementById('denyShortcut');
 
+const PROVIDER_SETUP_TIPS = {
+    codex: 'Requires Codex login. Run codex login, restart Codex, then Sync.',
+    claude: 'Requires Claude Code login and hooks. Restart Claude Code after enabling.',
+    cursor: 'Requires Cursor local login before usage can be synced.',
+    minimax: 'Requires MiniMax local login before plan usage can be synced.',
+    gemini: 'Requires Gemini local login before usage can be synced.',
+    deepseek: 'Requires DEEPSEEK_API_KEY in project .env or environment, then restart.'
+};
+
 let currentData = null;
 let pendingIntervention = null;
 let providerVisibility = {};
@@ -36,7 +45,7 @@ let lastExpandedHeight = 0;
 let heightSyncDebounce = null;
 let pendingDragMove = null;
 let dragMoveFrame = null;
-let windowState = { mode: 'pill', dockEdge: null, hidden: false };
+let windowState = { mode: 'pill' };
 const DRAG_THRESHOLD = 8;
 
 function expandIsland() {
@@ -76,14 +85,6 @@ island.addEventListener('click', (event) => {
     }
 });
 
-island.addEventListener('mouseenter', () => {
-    ipcRenderer.send('island:hover', true);
-});
-
-island.addEventListener('mouseleave', () => {
-    ipcRenderer.send('island:hover', false);
-});
-
 document.getElementById('pillContent').addEventListener('mousedown', (event) => {
     if (!island.classList.contains('pill')) {
         return;
@@ -117,7 +118,9 @@ window.addEventListener('mousemove', (event) => {
         dragMoveFrame = requestAnimationFrame(() => {
             dragMoveFrame = null;
             if (pendingDragMove) {
-                ipcRenderer.send('island:drag-move', pendingDragMove);
+                const nextMove = pendingDragMove;
+                pendingDragMove = null;
+                ipcRenderer.send('island:drag-move', nextMove);
             }
         });
     }
@@ -226,12 +229,10 @@ function renderPillProgress(accounts) {
         return;
     }
 
-    const displayAccounts = windowState.hidden ? accounts.slice(0, 1) : accounts.slice(0, 5);
+    const displayAccounts = accounts.slice(0, 5);
 
     pillProgress.classList.remove('hidden');
     pillContent.classList.add('pillContent-rings');
-    pillContent.classList.toggle('pillContent-rings-hidden', windowState.hidden);
-    primaryLabel.classList.toggle('pillTextHidden', windowState.hidden);
     primaryValue.classList.add('pillTextHidden');
     pillProgress.innerHTML = displayAccounts.map((account) => {
         const progressLine = getProgressLine(account);
@@ -244,7 +245,7 @@ function renderPillProgress(accounts) {
         const center = size / 2;
         const circumference = 2 * Math.PI * radius;
         const offset = circumference * (1 - displayPercent / 100);
-        const label = getProviderShortLabel(account);
+        const label = progressLine.format?.ringText || getProviderShortLabel(account);
 
         return `
             <div class="pillRing">
@@ -311,17 +312,50 @@ function renderAccountCard(account) {
     const plan = account.plan ? `<span class="accountPlan">${escapeHtml(account.plan)}</span>` : '';
     const lines = Array.isArray(account.lines) ? account.lines.slice(0, 2).map((line) => renderAccountLine(line)).join('') : '';
     const statusClass = account.status ? ` account-${escapeHtml(account.status)}` : '';
+    const tip = getAccountTip(account);
+    const tipBadge = tip ? renderTipBadge(tip) : '';
 
     return `
         <div class="accountCard${statusClass}">
             <div class="accountHead">
-                <span class="accountName">${escapeHtml(account.label || account.provider || 'Account')}</span>
+                <span class="accountNameWrap">
+                    <span class="accountName">${escapeHtml(account.label || account.provider || 'Account')}</span>
+                    ${tipBadge}
+                </span>
                 <span class="accountValue">${renderAccountHeadline(account)}</span>
             </div>
             ${plan}
             <div class="accountLines">${lines}</div>
         </div>
     `;
+}
+
+function renderTipBadge(tip) {
+    return `<span class="tipBadge" data-tip="${escapeHtml(tip)}">?</span>`;
+}
+
+function getAccountTip(account) {
+    if (!account) {
+        return null;
+    }
+
+    if (account.status === 'error') {
+        return account.message || getProviderSetupTip(account.provider);
+    }
+
+    if (account.status === 'stale') {
+        return account.message || 'Login is stale. Refresh the provider login, then Sync.';
+    }
+
+    if (!Array.isArray(account.lines) || account.lines.length === 0) {
+        return getProviderSetupTip(account.provider);
+    }
+
+    if (account.message) {
+        return account.message;
+    }
+
+    return null;
 }
 
 function renderAccountHeadline(account) {
@@ -660,12 +694,7 @@ ipcRenderer.on('intervention-state', (_event, intervention) => {
 });
 
 ipcRenderer.on('island-window-state', (_event, nextState) => {
-    const previousHidden = windowState.hidden;
-    const previousDockEdge = windowState.dockEdge;
     windowState = nextState || windowState;
-    if (currentData && (previousHidden !== windowState.hidden || previousDockEdge !== windowState.dockEdge)) {
-        renderSummary(currentData);
-    }
 });
 
 syncButton.addEventListener('click', async () => {
@@ -696,7 +725,8 @@ window.addEventListener('keydown', (event) => {
     }
 
     const modifierPressed = event.ctrlKey || event.metaKey;
-    if (!modifierPressed || !event.altKey) {
+    const actionModifierPressed = event.altKey || event.shiftKey;
+    if (!modifierPressed || !actionModifierPressed) {
         return;
     }
 
@@ -714,7 +744,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 function renderShortcuts() {
-    const prefix = process.platform === 'darwin' ? '⌘⌥' : 'Ctrl Alt';
+    const prefix = process.platform === 'darwin' ? 'Cmd Opt' : 'Ctrl Alt';
     approveShortcut.innerText = `${prefix} A`;
     alwaysShortcut.innerText = `${prefix} L`;
     denyShortcut.innerText = `${prefix} D`;
@@ -729,16 +759,23 @@ function renderProviderToggles() {
 
     providerToggles.innerHTML = providers.map(([key, info]) => {
         const activeClass = info.visible ? ' active' : '';
+        const tip = getProviderToggleTip(key);
         return `
             <div class="providerToggle" data-provider="${escapeHtml(key)}">
-                <span class="providerToggleLabel">${escapeHtml(info.label)}</span>
+                <span class="providerToggleLabel">
+                    ${escapeHtml(info.label)}
+                    ${renderTipBadge(tip)}
+                </span>
                 <div class="toggleSwitch${activeClass}"></div>
             </div>
         `;
     }).join('');
 
     providerToggles.querySelectorAll('.providerToggle').forEach((el) => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (event) => {
+            if (event.target.closest('.tipBadge')) {
+                return;
+            }
             const provider = el.dataset.provider;
             const current = providerVisibility[provider];
             if (current) {
@@ -755,6 +792,30 @@ function renderProviderToggles() {
             }
         });
     });
+}
+
+function getProviderToggleTip(provider) {
+    const account = currentData && Array.isArray(currentData.accounts)
+        ? currentData.accounts.find((item) => item.provider === provider)
+        : null;
+
+    if (!account) {
+        return getProviderSetupTip(provider);
+    }
+
+    if (account.status === 'error' || account.status === 'stale') {
+        return account.message || getProviderSetupTip(provider);
+    }
+
+    if (!Array.isArray(account.lines) || account.lines.length === 0) {
+        return getProviderSetupTip(provider);
+    }
+
+    return account.message || getProviderSetupTip(provider);
+}
+
+function getProviderSetupTip(provider) {
+    return PROVIDER_SETUP_TIPS[provider] || 'Enable this provider, complete its login or key setup, then Sync.';
 }
 
 function renderAccounts(accounts, syncHeight = true) {

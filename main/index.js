@@ -14,6 +14,11 @@ const { LocalAPI } = require('./local-api');
 
 loadEnvFile();
 
+// Windows taskbar icon requires AUMI set before app is ready
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.thatisok.app');
+}
+
 let islandWindow;
 let trayController;
 let sessionStore;
@@ -26,12 +31,11 @@ let interventionManager;
 let localAPI;
 let islandState = {
   mode: 'pill',
-  dockEdge: null,
-  hidden: false,
   expandedHeight: 404,
   dragStartBounds: null,
   dragStartMouse: null,
-  lastDragBounds: null
+  lastDragBounds: null,
+  dragWorkArea: null
 };
 
 const WINDOW_SIZES = {
@@ -40,8 +44,6 @@ const WINDOW_SIZES = {
 };
 
 const WINDOW_MARGIN = 12;
-const DOCK_THRESHOLD = 28;
-const EDGE_PEEK = 44;
 const APP_ICON_PATH = path.join(__dirname, '..', 'assets', 'icon.png');
 
 function getTopCenterBounds(size) {
@@ -71,7 +73,7 @@ function getWindowSize(mode = islandState.mode) {
 }
 
 function clampBounds(bounds, options = {}) {
-  const area = getWorkArea();
+  const area = options.workArea || getWorkArea();
   const allowOffscreenX = Boolean(options.allowOffscreenX);
   const allowOffscreenY = Boolean(options.allowOffscreenY);
   return {
@@ -86,69 +88,21 @@ function clampBounds(bounds, options = {}) {
   };
 }
 
-function getVisibleBounds(bounds = islandWindow.getBounds()) {
-  const area = getWorkArea();
-  const visible = { ...bounds };
-
-  if (islandState.dockEdge === 'left' && islandState.hidden) {
-    visible.x = area.x + WINDOW_MARGIN;
-  }
-  if (islandState.dockEdge === 'right' && islandState.hidden) {
-    visible.x = area.x + area.width - bounds.width - WINDOW_MARGIN;
-  }
-  if (islandState.dockEdge === 'top' && islandState.hidden) {
-    visible.y = area.y + WINDOW_MARGIN;
-  }
-
-  return visible;
-}
-
-function getDockedBounds(edge, size, hidden = false) {
-  const area = getWorkArea();
-  const bounds = {
-    width: size.width,
-    height: size.height,
-    x: area.x + Math.round((area.width - size.width) / 2),
-    y: area.y + WINDOW_MARGIN
-  };
-
-  if (edge === 'left') {
-    bounds.x = hidden ? area.x - size.width + EDGE_PEEK : area.x + WINDOW_MARGIN;
-  } else if (edge === 'right') {
-    bounds.x = hidden ? area.x + area.width - EDGE_PEEK : area.x + area.width - size.width - WINDOW_MARGIN;
-  } else if (edge === 'top') {
-    bounds.y = hidden ? area.y - size.height + EDGE_PEEK : area.y + WINDOW_MARGIN;
-  }
-
-  return clampBounds({
-    ...bounds,
-    x: edge === 'left' && hidden ? area.x - size.width + EDGE_PEEK : bounds.x,
-    y: edge === 'top' && hidden ? area.y - size.height + EDGE_PEEK : bounds.y
-  }, {
-    allowOffscreenX: hidden && (edge === 'left' || edge === 'right'),
-    allowOffscreenY: hidden && edge === 'top'
-  });
-}
-
-function resolveDockEdge(bounds) {
-  const area = getWorkArea();
-  const distances = [
-    { edge: 'left', value: Math.abs(bounds.x - area.x) },
-    { edge: 'right', value: Math.abs(area.x + area.width - (bounds.x + bounds.width)) },
-    { edge: 'top', value: Math.abs(bounds.y - area.y) }
-  ].sort((left, right) => left.value - right.value);
-
-  return distances[0].value <= DOCK_THRESHOLD ? distances[0].edge : null;
-}
-
-function applyIslandBounds(bounds, hidden = islandState.hidden) {
+function applyIslandBounds(bounds) {
   if (!islandWindow || islandWindow.isDestroyed()) {
     return;
   }
 
   islandWindow.setBounds(bounds, false);
-  islandState.hidden = hidden;
   broadcastWindowState();
+}
+
+function applyDragPosition(bounds) {
+  if (!islandWindow || islandWindow.isDestroyed()) {
+    return;
+  }
+
+  islandWindow.setPosition(Math.round(bounds.x), Math.round(bounds.y), false);
 }
 
 function broadcastWindowState() {
@@ -157,41 +111,13 @@ function broadcastWindowState() {
   }
 
   islandWindow.webContents.send('island-window-state', {
-    mode: islandState.mode,
-    dockEdge: islandState.dockEdge,
-    hidden: islandState.hidden
+    mode: islandState.mode
   });
-}
-
-function revealDockedIsland() {
-  if (!islandWindow || islandWindow.isDestroyed()) {
-    return;
-  }
-
-  if (!islandState.dockEdge || !islandState.hidden) {
-    return;
-  }
-
-  applyIslandBounds(getDockedBounds(islandState.dockEdge, getWindowSize(islandState.mode), false), false);
-}
-
-function hideDockedIsland() {
-  if (!islandWindow || islandWindow.isDestroyed()) {
-    return;
-  }
-
-  if (!islandState.dockEdge || islandState.mode !== 'pill') {
-    return;
-  }
-
-  applyIslandBounds(getDockedBounds(islandState.dockEdge, getWindowSize(islandState.mode), true), true);
 }
 
 function createIslandWindow() {
   const bounds = getTopCenterBounds(WINDOW_SIZES.pill);
   islandState.mode = 'pill';
-  islandState.dockEdge = null;
-  islandState.hidden = false;
 
   islandWindow = new BrowserWindow({
     ...bounds,
@@ -269,7 +195,7 @@ function setIslandMode(mode = 'pill') {
 
   islandState.mode = mode;
   const size = getWindowSize(mode);
-  const current = getVisibleBounds();
+  const current = islandWindow.getBounds();
   const nextBounds = clampBounds({
     width: size.width,
     height: size.height,
@@ -277,12 +203,7 @@ function setIslandMode(mode = 'pill') {
     y: current.y
   });
 
-  if (islandState.dockEdge) {
-    applyIslandBounds(getDockedBounds(islandState.dockEdge, size, false), false);
-    return;
-  }
-
-  applyIslandBounds(nextBounds, false);
+  applyIslandBounds(nextBounds);
 }
 
 function startIslandDrag(mouse) {
@@ -290,10 +211,9 @@ function startIslandDrag(mouse) {
     return;
   }
 
-  revealDockedIsland();
-  islandState.dragStartBounds = getVisibleBounds();
+  islandState.dragStartBounds = islandWindow.getBounds();
   islandState.dragStartMouse = mouse;
-  islandState.hidden = false;
+  islandState.dragWorkArea = getWorkArea();
 }
 
 function moveIslandDrag(mouse) {
@@ -307,6 +227,8 @@ function moveIslandDrag(mouse) {
     ...islandState.dragStartBounds,
     x: islandState.dragStartBounds.x + dx,
     y: islandState.dragStartBounds.y + dy
+  }, {
+    workArea: islandState.dragWorkArea
   });
 
   const previous = islandState.lastDragBounds;
@@ -315,7 +237,7 @@ function moveIslandDrag(mouse) {
   }
 
   islandState.lastDragBounds = nextBounds;
-  applyIslandBounds(nextBounds, false);
+  applyDragPosition(nextBounds);
 }
 
 function endIslandDrag() {
@@ -326,15 +248,10 @@ function endIslandDrag() {
   islandState.dragStartBounds = null;
   islandState.dragStartMouse = null;
   islandState.lastDragBounds = null;
+  islandState.dragWorkArea = null;
 
-  const current = getVisibleBounds();
-  islandState.dockEdge = islandState.mode === 'pill' ? resolveDockEdge(current) : null;
-  if (islandState.dockEdge) {
-    applyIslandBounds(getDockedBounds(islandState.dockEdge, getWindowSize(islandState.mode), false), false);
-    return;
-  }
-
-  applyIslandBounds(clampBounds(current), false);
+  const current = islandWindow.getBounds();
+  applyIslandBounds(clampBounds(current));
 }
 
 function setupIPC() {
@@ -375,18 +292,8 @@ function setupIPC() {
   ipcMain.on('island:drag-end', () => {
     endIslandDrag();
   });
-  ipcMain.on('island:hover', (_event, hovering) => {
-    if (hovering) {
-      revealDockedIsland();
-      return;
-    }
-
-    hideDockedIsland();
-  });
   ipcMain.on('intervention:respond', (_event, decision) => {
-    if (interventionManager) {
-      interventionManager.respond(decision);
-    }
+    respondToIntervention(decision);
   });
 
   ipcMain.handle('hooks:get-status', () => {
@@ -548,23 +455,12 @@ function registerGlobalShortcuts() {
     }
   });
 
-  registerShortcut('CommandOrControl+Alt+A', () => {
-    if (interventionManager && interventionManager.getPending()) {
-      interventionManager.respond('approve');
-    }
-  });
-
-  registerShortcut('CommandOrControl+Alt+L', () => {
-    if (interventionManager && interventionManager.getPending()) {
-      interventionManager.respond('approve_always');
-    }
-  });
-
-  registerShortcut('CommandOrControl+Alt+D', () => {
-    if (interventionManager && interventionManager.getPending()) {
-      interventionManager.respond('deny');
-    }
-  });
+  registerDecisionShortcut('CommandOrControl+Alt+A', 'approve');
+  registerDecisionShortcut('CommandOrControl+Shift+A', 'approve');
+  registerDecisionShortcut('CommandOrControl+Alt+L', 'approve_always');
+  registerDecisionShortcut('CommandOrControl+Shift+L', 'approve_always');
+  registerDecisionShortcut('CommandOrControl+Alt+D', 'deny');
+  registerDecisionShortcut('CommandOrControl+Shift+D', 'deny');
 }
 
 function registerShortcut(accelerator, callback) {
@@ -572,6 +468,20 @@ function registerShortcut(accelerator, callback) {
   if (!registered) {
     console.warn(`Shortcut registration failed: ${accelerator}`);
   }
+}
+
+function registerDecisionShortcut(accelerator, decision) {
+  registerShortcut(accelerator, () => respondToIntervention(decision));
+}
+
+function respondToIntervention(decision) {
+  if (!interventionManager || !interventionManager.getPending()) {
+    return false;
+  }
+
+  interventionManager.respond(decision);
+  broadcastSummary();
+  return true;
 }
 
 app.on('before-quit', () => {

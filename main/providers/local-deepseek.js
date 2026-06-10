@@ -54,6 +54,18 @@ class LocalDeepSeekProvider {
       });
     }
 
+    // progress ring for pill display — ring shows full circle, text shows balance
+    if (Number.isFinite(total)) {
+      lines.push({
+        type: 'progress',
+        used: 0,
+        limit: 1,
+        label: 'Balance',
+        value: this.formatMoney(total, currency),
+        format: { ringText: this.formatMoney(total, currency) }
+      });
+    }
+
     return lines;
   }
 

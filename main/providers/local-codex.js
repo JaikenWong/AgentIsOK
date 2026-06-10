@@ -48,6 +48,15 @@ class LocalCodexProvider {
       subtitleBits.push(`cached ${lastRefresh}`);
     }
 
+    if (!stale && options.effectivePlan) {
+      lines.push({
+        type: 'text',
+        label: 'Plan',
+        value: options.effectivePlan,
+        subtitle: subtitleBits.join(' · ') || 'Codex local login'
+      });
+    }
+
     if (stale) {
       lines.push({
         type: 'text',

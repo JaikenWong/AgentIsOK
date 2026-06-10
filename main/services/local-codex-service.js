@@ -16,11 +16,13 @@ class LocalCodexService {
       const isStale = this.isStale(auth.last_refresh);
 
       let usageData = null;
+      let usageError = null;
       let refreshSuccess = false;
       if (accessToken) {
         try {
           usageData = await this.fetchUsageApi(accessToken, accountId);
         } catch (error) {
+          usageError = error;
           const status = error.response?.status || error.status;
           if (status === 401 || error.message.includes('expired')) {
             const refreshedToken = await this.refreshToken(auth, authPath);
@@ -28,6 +30,7 @@ class LocalCodexService {
               accessToken = refreshedToken;
               usageData = await this.fetchUsageApi(accessToken, accountId);
               refreshSuccess = true;
+              usageError = null;
             }
           }
         }
@@ -41,6 +44,9 @@ class LocalCodexService {
       const subscriptionUntil = authInfo.chatgpt_subscription_active_until || null;
       const hasApiKey = Boolean(auth.OPENAI_API_KEY);
       const displayPlan = this.getDisplayPlan(planType, hasApiKey, subscriptionUntil);
+      if (!usageData) {
+        usageData = this.readLatestSessionUsage(planType);
+      }
 
       const effectiveStale = isStale && !usageData && !refreshSuccess;
 
@@ -52,9 +58,9 @@ class LocalCodexService {
         creditTotalUsd: null,
         creditUsedUsd: null,
         status: effectiveStale ? 'stale' : 'live-local',
-        message: this.buildMessage(planType, hasApiKey, effectiveStale, usageData),
+        message: this.buildMessage(planType, hasApiKey, effectiveStale, usageData, usageError),
         capturedAt: Date.now(),
-        source: 'local_auth',
+        source: usageData && usageData.source ? usageData.source : 'local_auth',
         plan: effectiveStale ? 'Codex auth stale' : displayPlan,
         usage: usageData,
         meta: {
@@ -99,6 +105,110 @@ class LocalCodexService {
     return await response.json();
   }
 
+  readLatestSessionUsage(planType) {
+    const sessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+    const latest = this.findLatestRateLimitEvent(sessionsDir);
+    if (!latest || !latest.rateLimits) {
+      return null;
+    }
+
+    const rateLimits = latest.rateLimits;
+    const usage = {
+      plan_type: rateLimits.plan_type || planType || null,
+      source: 'local_sessions',
+      captured_at: latest.timestamp || null,
+      rate_limit: {}
+    };
+
+    if (rateLimits.primary) {
+      usage.rate_limit.primary_window = this.normalizeRateLimitWindow(rateLimits.primary);
+    }
+    if (rateLimits.secondary) {
+      usage.rate_limit.secondary_window = this.normalizeRateLimitWindow(rateLimits.secondary);
+    }
+    if (rateLimits.credits) {
+      usage.credits = {
+        has_credits: Boolean(rateLimits.credits.has_credits),
+        unlimited: Boolean(rateLimits.credits.unlimited),
+        balance: rateLimits.credits.balance
+      };
+    }
+    if (rateLimits.individual_limit) {
+      usage.individual_limit = rateLimits.individual_limit;
+    }
+
+    return usage;
+  }
+
+  findLatestRateLimitEvent(rootDir) {
+    if (!fs.existsSync(rootDir)) {
+      return null;
+    }
+
+    let latest = null;
+    for (const filePath of this.listJsonlFiles(rootDir)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      for (const line of content.split(/\r?\n/)) {
+        if (!line.includes('"rate_limits"')) {
+          continue;
+        }
+
+        const event = this.parseRateLimitLine(line);
+        if (event && (!latest || event.timeMs > latest.timeMs)) {
+          latest = event;
+        }
+      }
+    }
+
+    return latest;
+  }
+
+  *listJsonlFiles(dir) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        yield* this.listJsonlFiles(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        yield fullPath;
+      }
+    }
+  }
+
+  parseRateLimitLine(line) {
+    try {
+      const parsed = JSON.parse(line);
+      const rateLimits = parsed && parsed.payload && parsed.payload.rate_limits;
+      if (!rateLimits) {
+        return null;
+      }
+
+      const timestamp = parsed.timestamp || null;
+      const timeMs = timestamp ? new Date(timestamp).getTime() : 0;
+      return {
+        timestamp,
+        timeMs: Number.isFinite(timeMs) ? timeMs : 0,
+        rateLimits
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  normalizeRateLimitWindow(window) {
+    return {
+      used_percent: Number(window.used_percent || 0),
+      reset_at: window.resets_at || window.reset_at || null,
+      window_minutes: window.window_minutes || null
+    };
+  }
+
   async refreshToken(auth, authPath) {
     const refreshToken = auth && auth.tokens && auth.tokens.refresh_token;
     if (!refreshToken) return null;
@@ -137,10 +247,14 @@ class LocalCodexService {
     return null;
   }
 
-  buildMessage(planType, hasApiKey, isStale, usageData) {
+  buildMessage(planType, hasApiKey, isStale, usageData, usageError = null) {
     const plan = this.formatPlan(planType);
     if (hasApiKey) {
       return `plan ${plan} · api key linked`;
+    }
+
+    if (usageData && usageData.source === 'local_sessions') {
+      return `plan ${plan} · local Codex rate limits`;
     }
 
     if (usageData && usageData.credits && usageData.credits.balance !== undefined) {
@@ -149,6 +263,10 @@ class LocalCodexService {
 
     if (isStale) {
       return `cached login · verify in Codex dashboard`;
+    }
+
+    if (usageError) {
+      return `plan ${plan} · usage API unavailable`;
     }
 
     return `plan ${plan} · balance in Codex Usage Dashboard`;

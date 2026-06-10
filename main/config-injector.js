@@ -16,7 +16,8 @@ const CODEX_HOOK_EVENTS = [
     'UserPromptSubmit',
     'PreToolUse',
     'PostToolUse',
-    'Stop'
+    'Stop',
+    'PermissionRequest'
 ];
 
 const GEMINI_HOOK_EVENTS = [
@@ -129,7 +130,7 @@ class ConfigInjector {
                         {
                             type: 'command',
                             command: this.buildBridgeCommand('codex', eventName),
-                            timeout: 10
+                            timeout: eventName === 'PermissionRequest' ? 86400 : 10
                         }
                     ],
                     _managedBy: managedKey
@@ -393,7 +394,7 @@ class ConfigInjector {
         const bridgePath = path.join(this.appPath, 'bridge', 'hook-bridge.js');
         if (process.platform === 'win32') {
             const escaped = bridgePath.replace(/"/g, '\\"');
-            return `cmd /d /s /c "node \\"${escaped}\\" --source ${source} --event ${eventName}"`;
+            return `node "${escaped}" --source ${source} --event ${eventName}`;
         }
 
         return `"/usr/bin/env" node "${bridgePath}" --source ${source} --event ${eventName}`;
