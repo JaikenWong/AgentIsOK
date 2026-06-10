@@ -1,6 +1,6 @@
 {
   "name": "thatisok",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "AI agent cost + approval cockpit for Claude Code, Codex, Cursor, MiniMax",
   "main": "main/index.js",
   "bin": {
