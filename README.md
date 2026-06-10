@@ -7,7 +7,7 @@ AI agent cost + approval cockpit. Floating island on top of macOS, hooks into Cl
 - **Approval bridge** — pipes `PermissionRequest` and `PreToolUse` from Claude/Codex hooks to a floating island; approve / always / deny without leaving the keyboard
 - **Multi-agent support** — Claude Code, Codex, OpenCode (via plugin)
 - **Full hook lifecycle** — SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit, PermissionRequest
-- **Multi-account usage sync** — Anthropic cost report, OpenAI admin, local Codex `auth.json` JWT decode, local Claude JSONL transcripts
+- **Multi-account usage sync** — Anthropic, OpenAI admin, DeepSeek, Codex local JWT, Claude JSONL transcripts
 - **Island UI** — top-center pill → expands to dashboard (balance, today, month, runway, accounts)
 - **System notifications** — get notified when permission is needed, even when island is hidden
 - **Keyboard shortcuts** — `Cmd+Shift+Space` toggle, `Cmd+Shift+A` approve, `Cmd+Shift+D` deny
@@ -57,6 +57,7 @@ On first run, `ConfigInjector` writes hooks into `~/.claude/settings.json` and `
 |-------|-------------|---------------|----------------|
 | Claude Code | SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit, PermissionRequest | Yes | Local JSONL transcripts |
 | Codex | SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit | Yes | auth.json JWT decode |
+| DeepSeek | Via local API | Yes | auth.json JWT decode |
 | OpenCode | Full lifecycle via plugin | Yes | Via plugin |
 
 ## Keyboard Shortcuts
