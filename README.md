@@ -5,7 +5,7 @@ AI agent cost + approval cockpit. Floating island on top of macOS, hooks into Cl
 ## Features
 
 - **Approval bridge** — pipes `PermissionRequest` and `PreToolUse` from Claude/Codex hooks to a floating island; approve / always / deny without leaving the keyboard
-- **Multi-agent support** — Claude Code, Codex, OpenCode (via plugin)
+- **Multi-agent support** — Claude Code, Codex
 - **Full hook lifecycle** — SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit, PermissionRequest
 - **Multi-account usage sync** — Anthropic, OpenAI admin, DeepSeek, Codex local JWT, Claude JSONL transcripts
 - **Island UI** — top-center pill → expands to dashboard (balance, today, month, runway, accounts)
@@ -30,9 +30,7 @@ ThatIsOk/
 │   └── storage/         electron-store wrapper
 ├── bridge/              standalone hook bridge CLI (Node)
 ├── renderer/            island UI (HTML + CSS + JS)
-├── plugins/             OpenCode plugin
 ├── bin/cli.js           `ok` command launcher
-├── bin/install-opencode-plugin.js  OpenCode plugin installer
 └── config/              providers / models / defaults (JSON)
 ```
 
@@ -58,7 +56,6 @@ On first run, `ConfigInjector` writes hooks into `~/.claude/settings.json` and `
 | Claude Code | SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit, PermissionRequest | Yes | Local JSONL transcripts |
 | Codex | SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit | Yes | auth.json JWT decode |
 | DeepSeek | Via local API | Yes | auth.json JWT decode |
-| OpenCode | Full lifecycle via plugin | Yes | Via plugin |
 
 ## Keyboard Shortcuts
 
@@ -82,30 +79,6 @@ Usage data is available at `http://127.0.0.1:45874`:
 | `GET /api/overview` | Balance, costs, runway |
 | `GET /api/accounts` | Account list with balances |
 | `GET /api/intervention` | Current pending permission request |
-
-## OpenCode Plugin
-
-OpenCode 是一个 AI 代码编辑器插件，ThatIsOk 提供插件形式的 Hook Bridge 支持。
-
-安装后，OpenCode 的所有 hook 事件（SessionStart/Stop、PreToolUse、PermissionRequest 等）会通过插件发送到 ThatIsOk 的 IPC bridge，实现统一的权限审批和用量追踪。
-
-Install the OpenCode plugin:
-
-```bash
-npm run plugin:install
-```
-
-Uninstall:
-
-```bash
-npm run plugin:uninstall
-```
-
-Check status:
-
-```bash
-npm run plugin:status
-```
 
 ## License
 
